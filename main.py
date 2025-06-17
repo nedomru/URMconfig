@@ -61,14 +61,13 @@ class SystemDiagnosticsApp:
     # UI helpers
     # ------------------------------------------------------------------
     def create_header(self):
-        header_frame = tk.Frame(self.root, bg="#f0eded", height=80)
+        header_frame = tk.Frame(self.root, bg="#f0eded", height=65)
         header_frame.pack(fill="x", padx=10, pady=10)
         header_frame.pack_propagate(False)
 
         logopath = os.path.join(os.path.dirname(__file__), 'assets/logo.png')
         original_image = Image.open(logopath)
-        resized_image = original_image.resize((60, 40), Image.Resampling.LANCZOS)
-        self.logo_image = ImageTk.PhotoImage(resized_image)
+        self.logo_image = ImageTk.PhotoImage(original_image)
 
         logo_label = tk.Label(header_frame, image=self.logo_image, bg="#f0eded")
         logo_label.pack(side="left", padx=(0, 10), pady=10)
@@ -173,7 +172,7 @@ class SystemDiagnosticsApp:
         self.restart_button.pack_forget()
 
     def create_bottom_panel(self):
-        bottom_frame = tk.Frame(self.root, bg="#f0eded", height=70)
+        bottom_frame = tk.Frame(self.root, bg="#f0eded", height=20)
         bottom_frame.pack(fill="x", padx=15, pady=(0, 15))
         bottom_frame.pack_propagate(False)
 
@@ -204,7 +203,7 @@ class SystemDiagnosticsApp:
         self.insert_text("• Параметры процессора и оперативной памяти\n")
         self.insert_text("• Сетевое оборудование\n")
         self.insert_text("• Дисплей и видеокарту\n")
-        self.insert_text("• Свободное место на диске\n")
+        self.insert_text("• Свободное место на системном диске\n")
         self.insert_text("• Наличие микрофона и веб-камеры\n\n")
         self.insert_text("Готовы начать тестирование? Нажмите кнопку 'Начать тест'.\n")
 
@@ -354,7 +353,8 @@ class SystemDiagnosticsApp:
                 "Citrix не поддерживается"
             )
             self.insert_text(text, color)
-            self.insert_text(f"     Версия ОС: {platform.system()} {platform.release()} {platform.version().split('.')[2]} \n")
+            self.insert_text(
+                f"     Версия ОС: {platform.system()} {platform.release()} {platform.version().split('.')[2]} \n")
 
             self.insert_text(f"     Версия Citrix: {version} \n")
 
