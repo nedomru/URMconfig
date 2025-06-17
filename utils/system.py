@@ -12,22 +12,66 @@ def get_screen_resolution(self):
 
 
 def get_citrix_compatibility():
-    """Check Citrix Workspace App compatibility"""
+    """
+    Check Citrix Workspace App compatibility and return the supported version
+    based on Windows 10/11 OS version and build.
+    Returns:
+        tuple: (True/False, "Supported Citrix Version" or "N/A")
+    """
     os_name = platform.system()
-    os_version = platform.release()
+    os_release = platform.release()
+    try:
+        os_build = platform.version().split('.')[2]
+    except IndexError:
+        os_build = None # Handle cases where build number might not be available in expected format
 
     if os_name == "Windows":
-        try:
-            version_num = float(os_version)
-            if version_num >= 10:
-                return True, f"Windows {os_version}"
-            elif version_num >= 6.1:  # Windows 7
-                return True, f"Windows {os_version}"
+        if os_release == "11":
+            # Windows 11 Compatibility: {Build Number: Citrix Workspace App Version}
+            windows_11_compat = {
+                "26100": "2409 and later",
+                "22631": "2311 and later",
+                "22621": "2209 and later",
+                "22000": "2109.1 and later"
+            }
+            if os_build and os_build in windows_11_compat:
+                citrix_version_info = windows_11_compat[os_build]
+                if "and later" in citrix_version_info:
+                    # Extract the base version
+                    base_version = citrix_version_info.split(" ")[0]
+                    return True, f"{base_version} или выше" # Indicate support for this and later versions
+                else:
+                    return True, citrix_version_info
             else:
-                return False, f"Windows {os_version}"
-        except:
-            return False, f"Windows {os_version}"
+                return False, "N/A"
+        elif os_release == "10":
+            # Windows 10 Compatibility: {Build Number: Citrix Workspace App Version}
+            windows_10_compat = {
+                "19045": "2206 and later",
+                "19044": "2112.1 and later",
+                "19043": "2106 and later",
+                "19042": "2012 and later",
+                "19041": "2006.1 and later",
+                "18363": "1911 and later",
+                "18362": "1909 and later",
+                "17763": "1812 and later",
+                "17134": "1808 and later"
+            }
+            if os_build and os_build in windows_10_compat:
+                citrix_version_info = windows_10_compat[os_build]
+                if "and later" in citrix_version_info:
+                    # Extract the base version
+                    base_version = citrix_version_info.split(" ")[0]
+                    return True, f"{base_version} или выше" # Indicate support for this and later versions
+                else:
+                    return True, citrix_version_info
+            else:
+                return False, "N/A"
+        else:
+            return False, "N/A"
     elif os_name == "Linux":
-        return True, f"Linux {os_version}"
+        # For Linux, assuming broad compatibility as per the original function.
+        # If specific versions are needed, this would require more detailed lookup.
+        return True, "latest" # Or a specific known compatible version range for Linux
     else:
-        return False, f"{os_name} {os_version}"
+        return False, "N/A"
