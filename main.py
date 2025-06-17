@@ -1,9 +1,9 @@
 import os
 import platform
-import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from tkinter import messagebox
 
 import psutil
@@ -24,6 +24,8 @@ import utils.internet
 import utils.peripherals
 import utils.system
 
+LICENSE_URL = "https://sos.dom.ru/services/license_URM.pdf"
+
 
 class SystemDiagnosticsApp:
     def __init__(self, root):
@@ -31,7 +33,7 @@ class SystemDiagnosticsApp:
         self.root = root
         self.root.title("Диагностика возможности удаленной работы")
         self.root.geometry("600x700")
-        self.root.configure(bg='#f0eded')
+        self.root.configure(bg="#f0eded")
         self.root.resizable(False, False)
 
         self.diagnostics_complete = False
@@ -46,95 +48,113 @@ class SystemDiagnosticsApp:
 
         self.run_full_diagnostics()
 
+    # ------------------------------------------------------------------
+    # UI helpers
+    # ------------------------------------------------------------------
     def create_header(self):
-        header_frame = tk.Frame(self.root, bg='#f0eded', height=80)
-        header_frame.pack(fill='x', padx=10, pady=10)
+        header_frame = tk.Frame(self.root, bg="#f0eded", height=80)
+        header_frame.pack(fill="x", padx=10, pady=10)
         header_frame.pack_propagate(False)
 
         original_image = Image.open("assets/logo.png")
         resized_image = original_image.resize((60, 40), Image.Resampling.LANCZOS)
         self.logo_image = ImageTk.PhotoImage(resized_image)
 
-        logo_label = tk.Label(header_frame, image=self.logo_image, bg='#f0eded')
-        logo_label.pack(side='left', padx=(0, 10), pady=10)
+        logo_label = tk.Label(header_frame, image=self.logo_image, bg="#f0eded")
+        logo_label.pack(side="left", padx=(0, 10), pady=10)
 
-        title_label = tk.Label(header_frame, text="Диагностика возможности удаленной работы",
-                               bg='#f0eded', fg='black', font=('Arial', 14, 'bold'))
-        title_label.pack(side='left', pady=20)
+        title_label = tk.Label(
+            header_frame,
+            text="Диагностика возможности удаленной работы",
+            bg="#f0eded",
+            fg="black",
+            font=("Arial", 14, "bold"),
+        )
+        title_label.pack(side="left", pady=20)
 
     def create_main_panel(self):
-        self.main_frame = tk.Frame(self.root, bg='white', relief='raised', bd=2)
-        self.main_frame.pack(fill='both', expand=True, padx=15, pady=(0, 15))
+        self.main_frame = tk.Frame(self.root, bg="white", relief="raised", bd=2)
+        self.main_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
-        self.text_frame = tk.Frame(self.main_frame, bg='white')
-        self.text_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        self.text_frame = tk.Frame(self.main_frame, bg="white")
+        self.text_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        self.status_label = tk.Label(self.main_frame, text="", bg='white', fg='gray', font=('Arial', 10, 'italic'))
-        self.status_label.pack(fill='x', pady=(0, 10))
+        self.status_label = tk.Label(
+            self.main_frame,
+            text="",
+            bg="white",
+            fg="gray",
+            font=("Arial", 10, "italic"),
+        )
+        self.status_label.pack(fill="x", pady=(0, 10))
 
-        self.text_widget = tk.Text(self.text_frame, font=('Arial', 10), bg='white',
-                                   relief='flat', wrap='word', state='disabled')
-        scrollbar = tk.Scrollbar(self.text_frame, orient='vertical', command=self.text_widget.yview)
+        self.text_widget = tk.Text(
+            self.text_frame,
+            font=("Arial", 10),
+            bg="white",
+            relief="flat",
+            wrap="word",
+            state="disabled",
+        )
+        scrollbar = tk.Scrollbar(self.text_frame, orient="vertical", command=self.text_widget.yview)
         self.text_widget.configure(yscrollcommand=scrollbar.set)
 
-        self.text_widget.pack(side='left', fill='both', expand=True)
-        scrollbar.pack(side='right', fill='y')
+        self.text_widget.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
     def create_bottom_panel(self):
-        bottom_frame = tk.Frame(self.root, bg='#f0eded', height=50)
-        bottom_frame.pack(fill='x', padx=15, pady=(0, 15))
+        bottom_frame = tk.Frame(self.root, bg="#f0eded", height=70)
+        bottom_frame.pack(fill="x", padx=15, pady=(0, 15))
         bottom_frame.pack_propagate(False)
 
-        agreement_text = "Используя данную программу вы принимаете условия пользовательского соглашения"
-        agreement_label = tk.Label(bottom_frame, text=agreement_text, bg='#f0eded',
-                                   font=('Arial', 10), wraplength=500)
-        agreement_label.pack(anchor='center', pady=5)
+        prefix_label = tk.Label(
+            bottom_frame,
+            text="Используя данную программу вы принимаете",
+            bg="#f0eded",
+            font=("Arial", 10),
+        )
+        prefix_label.pack(side="left")
 
-    def update_status(self, message):
-        self.status_label.config(text=message)
-        self.root.update()
+        link_label = tk.Label(
+            bottom_frame,
+            text="условия пользовательского соглашения",
+            fg="blue",
+            cursor="hand2",
+            bg="#f0eded",
+            font=("Arial", 10, "underline"),
+        )
+        link_label.pack(side="left")
+        link_label.bind("<Button-1>", lambda e: webbrowser.open_new(LICENSE_URL))
 
-    def insert_text(self, text, color='black'):
-        self.text_widget.config(state='normal')
+    # ------------------------------------------------------------------
+    # Utility methods
+    # ------------------------------------------------------------------
+    def update_status(self, message: str):
+        """Update progress/status label (thread‑safe)."""
+        self.root.after(0, lambda: self.status_label.config(text=message))
+
+    def insert_text(self, text: str, color: str = "black"):
+        self.text_widget.config(state="normal")
         tag_name = f"color_{color}"
-        if color == 'green':
-            self.text_widget.tag_configure(tag_name, foreground='#008000')
-        elif color == 'red':
-            self.text_widget.tag_configure(tag_name, foreground='#FF0000')
-        else:
-            self.text_widget.tag_configure(tag_name, foreground='black')
+        if tag_name not in self.text_widget.tag_names():
+            if color == "green":
+                self.text_widget.tag_configure(tag_name, foreground="#008000")
+            elif color == "red":
+                self.text_widget.tag_configure(tag_name, foreground="#FF0000")
+            else:
+                self.text_widget.tag_configure(tag_name, foreground="black")
 
         self.text_widget.insert(tk.END, text, tag_name)
-        self.all_results.append((text, color))
-        self.text_widget.config(state='disabled')
+        self.text_widget.config(state="disabled")
         self.text_widget.see(tk.END)
         self.root.update()
 
     def check_status(self, condition, ok_text, fail_text):
         if condition:
-            return f"[OK] {ok_text}\n", 'green'
+            return f"[OK] {ok_text}\n", "green"
         else:
             self.failed_checks.append(fail_text)
-            return f"[НЕ OK] {fail_text}\n", 'red'
-
-    def run_speed_test_safe(self):
-        try:
-            if getattr(sys, 'frozen', False):
-                sys.stdin = open(os.devnull, 'r')
-                sys.stdout = open(os.devnull, 'w')
-                sys.stderr = open(os.devnull, 'w')
-
-            st = speedtest.Speedtest()
-            st.get_best_server()
-
-            download_speed = st.download() / 1024 / 1024
-            upload_speed = st.upload() / 1024 / 1024
-            ping = st.results.ping
-
-            return download_speed, upload_speed, ping, None
-
-        except Exception as e:
-            return 0, 0, 0, str(e)
+            return f"[НЕ OK] {fail_text}\n", "red"
 
     def run_full_diagnostics(self):
         def full_diagnostics_thread():
@@ -142,15 +162,16 @@ class SystemDiagnosticsApp:
             time.sleep(1)
 
             self.update_status("[1/4] Измеряю скорость интернета")
-            download_speed, upload_speed, ping, error = self.run_speed_test_safe()
+            download_speed, upload_speed, ping, error = utils.internet.run_speed_test_safe()
 
             if error:
-                self.insert_text(f"Ошибка тестирования скорости: {error}\nЗамерьте скорость вручную на speedtest.net\n", 'red')
+                self.insert_text(f"Ошибка тестирования скорости: {error}\nЗамерьте скорость вручную на speedtest.net\n",
+                                 'red')
                 self.failed_checks.append("Проводной интернет с пропускной способностью не менее 75 Мбит/с")
             else:
                 status_text, status_color = self.check_status(
                     download_speed >= 75,
-                    "Соединение в норме:",
+                    "Соединение в норме",
                     "Проводной интернет по технологии FTTx, xPON с пропускной способностью не менее 75 Мбит/с"
                 )
                 self.insert_text(f"{status_text}", status_color)
@@ -162,7 +183,8 @@ class SystemDiagnosticsApp:
             cpu_name = utils.cpu.get_cpu_name()
             cpu_cores = psutil.cpu_count(logical=False)
             logical_cores = psutil.cpu_count(logical=True)
-            text, color = self.check_status(cpu_cores >= 2, "Процессор в норме", "Процессор с не менее чем двумя ядрами")
+            text, color = self.check_status(cpu_cores >= 2, "Процессор в норме",
+                                            "Процессор с не менее чем двумя ядрами")
             self.insert_text(text, color)
             self.insert_text(f"     Модель: {cpu_name}\n")
             self.insert_text(f"     Виртуальных ядер: {logical_cores}\n")
@@ -190,7 +212,8 @@ class SystemDiagnosticsApp:
                 "Citrix не поддерживается"
             )
             self.insert_text(text, color)
-            self.insert_text(f"     Версия ОС: {platform.system()} {platform.release()} {platform.version().split('.')[2]} \n")
+            self.insert_text(
+                f"     Версия ОС: {platform.system()} {platform.release()} {platform.version().split('.')[2]} \n")
 
             self.update_status("[2/4] Проверяю оборудование (ОЗУ)")
             ram_gb = psutil.virtual_memory().total / (1024 ** 3)
@@ -198,7 +221,7 @@ class SystemDiagnosticsApp:
             c = wmi.WMI()
             ram_freq_list = [mem.Speed for mem in c.Win32_PhysicalMemory()]
             pythoncom.CoUninitialize()
-            text, color = self.check_status(ram_gb >= 4, "Память в норме:", "Оперативная память от 4 ГБ")
+            text, color = self.check_status(ram_gb >= 4, "Память в норме", "Оперативная память от 4 ГБ")
             self.insert_text(text, color)
             self.insert_text(f"     Всего ОЗУ: {ram_gb:.0f} ГБ\n")
             if ram_freq_list:
@@ -219,7 +242,8 @@ class SystemDiagnosticsApp:
             self.update_status("[3/4] Проверяю диск")
             disk_usage = psutil.disk_usage("C:")
             free_gb = disk_usage.free / (1024 ** 3)
-            text, color = self.check_status(free_gb >= 10, "Место на системном диске в норме", "Недостаточно места на диске")
+            text, color = self.check_status(free_gb >= 10, "Место на системном диске в норме",
+                                            "Недостаточно места на диске")
             self.insert_text(text, color)
             self.insert_text(f"     Свободно: {round(free_gb)} ГБ\n")
 
@@ -231,7 +255,8 @@ class SystemDiagnosticsApp:
             self.update_status("[4/4] Проверяю периферию (камера)")
             camera_available, cam_width, cam_height = utils.peripherals.check_camera()
             camera_hd = cam_width >= 1280 and cam_height >= 720
-            text, color = self.check_status(camera_available and camera_hd, "Web-камера обнаружена", "Web-камера не соответствует требованиям")
+            text, color = self.check_status(camera_available and camera_hd, "Web-камера обнаружена",
+                                            "Web-камера не соответствует требованиям")
             self.insert_text(text, color)
             if camera_available and camera_hd:
                 self.insert_text(f"      Разрешение: {cam_width}x{cam_height}")
@@ -252,7 +277,8 @@ class SystemDiagnosticsApp:
                     elif "микрофон" in issue.lower():
                         self.insert_text("- Наличие микрофона\n", 'red')
                     elif "web-камера" in issue.lower():
-                        self.insert_text("- Наличие web-камеры с разрешением не хуже HD (внешней или встроенной)\n", 'red')
+                        self.insert_text("- Наличие web-камеры с разрешением не хуже HD (внешней или встроенной)\n",
+                                         'red')
 
             self.update_status("Диагностика завершена")
             self.diagnostics_complete = True
