@@ -56,7 +56,8 @@ class SystemDiagnosticsApp:
         header_frame.pack(fill="x", padx=10, pady=10)
         header_frame.pack_propagate(False)
 
-        original_image = Image.open("assets/logo.png")
+        logopath = os.path.join(os.path.dirname(__file__), 'assets/logo.png')
+        original_image = Image.open(logopath)
         resized_image = original_image.resize((60, 40), Image.Resampling.LANCZOS)
         self.logo_image = ImageTk.PhotoImage(resized_image)
 
@@ -249,7 +250,7 @@ class SystemDiagnosticsApp:
 
             self.update_status("[4/4] Проверяю периферию (микрофон)")
             mic_available = utils.peripherals.check_microphone()
-            text, color = self.check_status(mic_available, "Микрофон обнаружен", "Гарнитура – микрофон и наушники")
+            text, color = self.check_status(mic_available, "Микрофон обнаружен", "Микрофон не найден")
             self.insert_text(text, color)
 
             self.update_status("[4/4] Проверяю периферию (камера)")
