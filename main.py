@@ -8,7 +8,9 @@ from tkinter import messagebox
 
 import psutil
 import pythoncom
+from PIL import Image, ImageTk  # Import Image and ImageTk from Pillow
 
+# Updated import for speedtest-cli
 try:
     import speedtest
 except ImportError:
@@ -26,10 +28,11 @@ import utils.system
 
 class SystemDiagnosticsApp:
     def __init__(self, root):
+        self.logo_image = None
         self.root = root
         self.root.title("Диагностика возможности удаленной работы")
         self.root.geometry("600x700")
-        self.root.configure(bg='#FFA500')  # Orange background like in screenshot
+        self.root.configure(bg='#f0eded')  # Orange background like in screenshot
         self.root.resizable(False, False)
 
         self.diagnostics_complete = False
@@ -46,21 +49,26 @@ class SystemDiagnosticsApp:
 
     def create_header(self):
         """Create header with logo and title"""
-        header_frame = tk.Frame(self.root, bg='#FFA500', height=80)
+        header_frame = tk.Frame(self.root, bg='#f0eded', height=80)
         header_frame.pack(fill='x', padx=10, pady=10)
         header_frame.pack_propagate(False)
 
-        # Logo placeholder (red triangular shape like AOM.py)
-        logo_frame = tk.Frame(header_frame, bg='#FF4444', width=60, height=40)
-        logo_frame.pack(side='left', padx=(0, 10), pady=10)
-        logo_frame.pack_propagate(False)
+        original_image = Image.open("assets/logo.png")
 
-        logo_label = tk.Label(logo_frame, text="ДОМ.py", bg='#FF4444', fg='white', font=('Arial', 10, 'bold'))
-        logo_label.pack(expand=True)
+        # Resize the image if necessary (e.g., to fit the 60x40 area or your desired size)
+        # You might need to adjust these dimensions based on your actual logo size and desired display
+        resized_image = original_image.resize((60, 40), Image.Resampling.LANCZOS)
+
+        # Convert the Pillow image to a Tkinter PhotoImage
+        self.logo_image = ImageTk.PhotoImage(resized_image)
+
+        # Create a Label to display the image
+        logo_label = tk.Label(header_frame, image=self.logo_image, bg='#f0eded')
+        logo_label.pack(side='left', padx=(0, 10), pady=10)
 
         # Title
         title_label = tk.Label(header_frame, text="Диагностика возможности удаленной работы",
-                               bg='#FFA500', fg='black', font=('Arial', 14, 'bold'))
+                               bg='#f0eded', fg='black', font=('Arial', 14, 'bold'))
         title_label.pack(side='left', pady=20)
 
     def create_main_panel(self):
@@ -83,26 +91,15 @@ class SystemDiagnosticsApp:
 
     def create_bottom_panel(self):
         """Create bottom panel with execute button and progress"""
-        bottom_frame = tk.Frame(self.root, bg='#FFA500', height=100)
+        bottom_frame = tk.Frame(self.root, bg='#f0eded', height=50)
         bottom_frame.pack(fill='x', padx=15, pady=(0, 15))
         bottom_frame.pack_propagate(False)
 
-        # Execute button (now "Копировать" after diagnostics)
-        self.execute_btn = tk.Button(bottom_frame, text="Выполнить", bg='#FF4444', fg='white',
-                                     font=('Arial', 12, 'bold'), width=15, height=2,
-                                     command=self.copy_to_clipboard)
-        self.execute_btn.pack(side='left', padx=20, pady=30)
-
-        # Progress circle placeholder
-        self.progress_frame = tk.Frame(bottom_frame, bg='#FFA500', width=80, height=80)
-        self.progress_frame.pack(side='left', padx=20, pady=10)
-        self.progress_frame.pack_propagate(False)
-
         # User agreement text
         agreement_text = "Используя данную программу вы принимаете условия пользовательского соглашения"
-        agreement_label = tk.Label(bottom_frame, text=agreement_text, bg='#FFA500',
-                                   font=('Arial', 8), wraplength=400)
-        agreement_label.pack(side='bottom', pady=5)
+        agreement_label = tk.Label(bottom_frame, text=agreement_text, bg='#f0eded',
+                                   font=('Arial', 10), wraplength=500)
+        agreement_label.pack(anchor='center', pady=5)
 
     def insert_text(self, text, color='black'):
         """Insert text into the text widget"""
@@ -330,7 +327,6 @@ class SystemDiagnosticsApp:
                             "- Наличие web-камеры с разрешением не хуже HD (внешней или встроенной)\n", 'red')
 
             self.diagnostics_complete = True
-            self.execute_btn.config(text="Копировать")
 
         threading.Thread(target=full_diagnostics_thread, daemon=True).start()
 
