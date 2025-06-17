@@ -37,16 +37,22 @@ class SystemDiagnosticsApp:
         self.root.resizable(False, False)
 
         self.diagnostics_complete = False
+        self.test_started = False
         self.all_results = []
         self.failed_checks = []
 
         self.status_label = None
+        self.start_button = None
+        self.copy_button = None
+        self.restart_button = None
 
         self.create_header()
         self.create_main_panel()
+        self.create_button_panel()
         self.create_bottom_panel()
 
-        self.run_full_diagnostics()
+        # Show initial message
+        self.show_initial_message()
 
     # ------------------------------------------------------------------
     # UI helpers
@@ -103,6 +109,66 @@ class SystemDiagnosticsApp:
         self.text_widget.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+    def create_button_panel(self):
+        self.button_frame = tk.Frame(self.root, bg="#f0eded", height=60)
+        self.button_frame.pack(fill="x", padx=15, pady=(0, 10))
+        self.button_frame.pack_propagate(False)
+
+        # Start test button (red rounded button)
+        self.start_button = tk.Button(
+            self.button_frame,
+            text="Начать тест",
+            bg="#FF312C",
+            fg="white",
+            font=("Arial", 12, "bold"),
+            relief="flat",
+            bd=0,
+            padx=30,
+            pady=10,
+            command=self.start_test,
+            cursor="hand2"
+        )
+        self.start_button.pack(pady=15)
+
+        # Copy and restart buttons (initially hidden)
+        button_container = tk.Frame(self.button_frame, bg="#f0eded")
+        button_container.pack(pady=15)
+
+        self.copy_button = tk.Button(
+            button_container,
+            text="Скопировать результат",
+            bg="#4CAF50",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            relief="flat",
+            bd=0,
+            padx=20,
+            pady=8,
+            command=self.copy_to_clipboard,
+            cursor="hand2"
+        )
+
+        self.restart_button = tk.Button(
+            button_container,
+            text="Перезапустить тест",
+            bg="#2196F3",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            relief="flat",
+            bd=0,
+            padx=20,
+            pady=8,
+            command=self.restart_test,
+            cursor="hand2"
+        )
+
+        self.copy_button.pack(side="left", padx=(0, 10))
+        self.restart_button.pack(side="left")
+
+        # Initially hide copy and restart buttons
+        self.copy_button.pack_forget()
+        self.restart_button.pack_forget()
+
     def create_bottom_panel(self):
         bottom_frame = tk.Frame(self.root, bg="#f0eded", height=70)
         bottom_frame.pack(fill="x", padx=15, pady=(0, 15))
@@ -126,6 +192,51 @@ class SystemDiagnosticsApp:
         )
         link_label.pack(side="left")
         link_label.bind("<Button-1>", lambda e: webbrowser.open_new(LICENSE_URL))
+
+    def show_initial_message(self):
+        """Show initial message asking user if they're ready to start the test."""
+        self.insert_text("Добро пожаловать в программу диагностики возможности удаленной работы!\n\n")
+        self.insert_text("Эта программа проверит:\n")
+        self.insert_text("• Скорость интернет-соединения\n")
+        self.insert_text("• Параметры процессора и оперативной памяти\n")
+        self.insert_text("• Сетевое оборудование\n")
+        self.insert_text("• Дисплей и видеокарту\n")
+        self.insert_text("• Свободное место на диске\n")
+        self.insert_text("• Наличие микрофона и веб-камеры\n\n")
+        self.insert_text("Готовы начать тестирование? Нажмите кнопку 'Начать тест'.\n")
+
+    def start_test(self):
+        """Start the diagnostic test."""
+        if not self.test_started:
+            self.test_started = True
+            self.start_button.pack_forget()  # Hide start button
+            self.clear_text()
+            self.run_full_diagnostics()
+
+    def restart_test(self):
+        """Restart the diagnostic test."""
+        self.diagnostics_complete = False
+        self.test_started = True
+        self.failed_checks = []
+        self.all_results = []
+
+        # Hide copy and restart buttons
+        self.copy_button.pack_forget()
+        self.restart_button.pack_forget()
+
+        self.clear_text()
+        self.run_full_diagnostics()
+
+    def clear_text(self):
+        """Clear the text widget."""
+        self.text_widget.config(state="normal")
+        self.text_widget.delete(1.0, tk.END)
+        self.text_widget.config(state="disabled")
+
+    def show_result_buttons(self):
+        """Show copy and restart buttons after test completion."""
+        self.copy_button.pack(side="left", padx=(0, 10))
+        self.restart_button.pack(side="left")
 
     # ------------------------------------------------------------------
     # Utility methods
@@ -283,6 +394,9 @@ class SystemDiagnosticsApp:
 
             self.update_status("Диагностика завершена")
             self.diagnostics_complete = True
+
+            # Show result buttons after completion
+            self.root.after(0, self.show_result_buttons)
 
         threading.Thread(target=full_diagnostics_thread, daemon=True).start()
 
