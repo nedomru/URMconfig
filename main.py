@@ -347,15 +347,16 @@ class SystemDiagnosticsApp:
                     self.insert_text(f"     Дуплекс: {adapter['speed']} Мбит/с\n")
 
             self.update_status("[2/4] Проверяю оборудование (операционная система)")
-            citrix_compatible, os_info = utils.system.get_citrix_compatibility()
+            citrix_compatible, version = utils.system.get_citrix_compatibility()
             text, color = self.check_status(
                 citrix_compatible,
                 "Поддержка Citrix в норме",
                 "Citrix не поддерживается"
             )
             self.insert_text(text, color)
-            self.insert_text(
-                f"     Версия ОС: {platform.system()} {platform.release()} {platform.version().split('.')[2]} \n")
+            self.insert_text(f"     Версия ОС: {platform.system()} {platform.release()} {platform.version().split('.')[2]} \n")
+
+            self.insert_text(f"     Версия Citrix: {version} \n")
 
             self.update_status("[2/4] Проверяю оборудование (ОЗУ)")
             ram_gb = psutil.virtual_memory().total / (1024 ** 3)
