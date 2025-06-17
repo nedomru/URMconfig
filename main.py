@@ -46,6 +46,9 @@ class SystemDiagnosticsApp:
         self.copy_button = None
         self.restart_button = None
 
+        self.animation_active = False
+        self.animation_thread = None
+
         self.create_header()
         self.create_main_panel()
         self.create_button_panel()
@@ -215,6 +218,7 @@ class SystemDiagnosticsApp:
 
     def restart_test(self):
         """Restart the diagnostic test."""
+        self.animation_active = False
         self.diagnostics_complete = False
         self.test_started = True
         self.failed_checks = []
@@ -243,7 +247,36 @@ class SystemDiagnosticsApp:
     # ------------------------------------------------------------------
     def update_status(self, message: str):
         """Update progress/status label (thread‑safe)."""
-        self.root.after(0, lambda: self.status_label.config(text=message))
+        # Stop any existing animation
+        self.animation_active = False
+        if self.animation_thread and self.animation_thread.is_alive():
+            self.animation_thread.join(timeout=0.1)
+
+        if message == "Диагностика завершена" or message == "":
+            # No animation for completion or empty messages
+            self.root.after(0, lambda: self.status_label.config(text=message))
+        else:
+            # Start animation for active status messages
+            self.animation_active = True
+            self.animation_thread = threading.Thread(
+                target=self.animate_status_dots,
+                args=(message,),
+                daemon=True
+            )
+            self.animation_thread.start()
+
+    def animate_status_dots(self, base_message):
+        """Animate dots after status message."""
+        dots = [".", "..", "..."]
+        dot_index = 0
+
+        while self.animation_active:
+            if not self.animation_active:  # Double check
+                break
+            current_message = f"{base_message}{dots[dot_index]}"
+            self.root.after(0, lambda msg=current_message: self.status_label.config(text=msg))
+            dot_index = (dot_index + 1) % len(dots)
+            time.sleep(0.5)  # Change dots every 500ms
 
     def insert_text(self, text: str, color: str = "black"):
         self.text_widget.config(state="normal")
@@ -270,9 +303,6 @@ class SystemDiagnosticsApp:
 
     def run_full_diagnostics(self):
         def full_diagnostics_thread():
-            self.insert_text("Выполняется диагностика системы...\n\n")
-            time.sleep(1)
-
             self.update_status("[1/4] Измеряю скорость интернета")
             download_speed, upload_speed, ping, error = utils.internet.run_speed_test_safe()
 
