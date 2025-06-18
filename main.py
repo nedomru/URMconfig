@@ -128,7 +128,7 @@ class DiagnosticsThread(QThread):
                 self._log_success("Соединение в норме")
             else:
                 self._log_failure(
-                    f"Проводной интернет по технологии FTTx, xPON с пропускной способностью не менее {MIN_INTERNET_SPEED} Мбит/с")
+                    f"Проводной интернет с пропускной способностью не менее {MIN_INTERNET_SPEED} Мбит/с")
                 self.app_instance.failed_checks.append(
                     f"internet")
 
