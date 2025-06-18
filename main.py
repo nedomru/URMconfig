@@ -1,66 +1,92 @@
+"""
+System Diagnostics Application for Remote Work Capability Assessment
+
+This application performs comprehensive system diagnostics to determine
+if a computer meets the requirements for remote work, including:
+- Internet speed testing
+- Hardware compatibility checks
+- Peripheral device verification
+- OS and software compatibility
+"""
+
 import os
 import platform
-import threading
-import time
 import webbrowser
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
-                             QWidget, QLabel, QPushButton, QTextEdit, QFrame,
-                             QScrollArea, QMessageBox)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QPixmap, QFont, QPainter, QPainterPath, QColor, QIcon
-import psutil
-import pythoncom
+from typing import List, Optional
 
+import psutil
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5.QtGui import QPixmap, QFont, QPainter, QPainterPath, QColor
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
+    QWidget, QLabel, QPushButton, QTextEdit, QFrame,
+    QMessageBox
+)
+
+# Import validation with user-friendly error handling
 try:
     import speedtest
-except ImportError:
-    print("speedtest-cli not found. Installing...")
-    os.system("pip install speedtest-cli")
-    import speedtest
-import wmi
+    import wmi
+    import cv2
+    import pyaudio
+    import numpy
+except ImportError as e:
+    print(f"Missing required module: {e.name}")
 
+# Local utility imports
 import utils.cpu
 import utils.gpu
 import utils.internet
 import utils.peripherals
 import utils.system
 
+# Application constants
 LICENSE_URL = "https://sos.dom.ru/services/license_URM.pdf"
+WINDOW_WIDTH = 600
+WINDOW_HEIGHT = 700
+ANIMATION_INTERVAL = 500
+MIN_INTERNET_SPEED = 75  # Mbps
+MIN_CPU_CORES = 2
+MIN_RAM_GB = 4
+MIN_SCREEN_WIDTH = 1600
+MIN_SCREEN_HEIGHT = 900
+MIN_DISK_SPACE_GB = 10
 
 
 class RoundedButton(QPushButton):
-    def __init__(self, text, parent=None):
+    """Custom QPushButton with rounded corners styling."""
+
+    def __init__(self, text: str, parent=None):
         super().__init__(text, parent)
         self.setMinimumHeight(45)
 
     def paintEvent(self, event):
+        """Custom paint event for rounded button appearance."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Get button rect
         rect = self.rect()
-
-        # Create rounded rectangle path
         path = QPainterPath()
-        radius = 22  # Half of minimum height for fully rounded
+        radius = 22
         path.addRoundedRect(rect.x(), rect.y(), rect.width(), rect.height(), radius, radius)
 
-        # Fill with background color
+        # Determine button color based on state
         if self.isEnabled():
-            if self.isDown():
-                painter.fillPath(path, QColor(self.palette().color(self.palette().Dark)))
-            else:
-                painter.fillPath(path, QColor(self.palette().color(self.palette().Button)))
+            color = QColor(self.palette().color(self.palette().Dark)) if self.isDown() \
+                else QColor(self.palette().color(self.palette().Button))
         else:
-            painter.fillPath(path, QColor(self.palette().color(self.palette().Mid)))
+            color = QColor(self.palette().color(self.palette().Mid))
 
-        # Draw text
+        painter.fillPath(path, color)
         painter.setPen(QColor(self.palette().color(self.palette().ButtonText)))
         painter.setFont(self.font())
         painter.drawText(rect, Qt.AlignCenter, self.text())
 
 
 class DiagnosticsThread(QThread):
+    """Background thread for running system diagnostics."""
+
+    # Signals for communicating with main thread
     status_update = pyqtSignal(str)
     text_insert = pyqtSignal(str, str)  # text, color
     diagnostics_complete = pyqtSignal()
@@ -70,208 +96,253 @@ class DiagnosticsThread(QThread):
         self.app_instance = app_instance
 
     def run(self):
+        """Execute the complete diagnostics routine."""
         self.app_instance.failed_checks = []
 
-        # Internet speed test
-        self.status_update.emit("[1/4] Измеряю скорость интернета")
-        download_speed, upload_speed, ping, error = utils.internet.run_speed_test_safe()
-
-        if error:
-            self.text_insert.emit(
-                f"Ошибка тестирования скорости: {error}\nЗамерьте скорость вручную на speedtest.net\n", 'red')
-            self.app_instance.failed_checks.append("Проводной интернет с пропускной способностью не менее 75 Мбит/с")
-        else:
-            if download_speed >= 75:
-                self.text_insert.emit("[OK] Соединение в норме\n", "green")
-            else:
-                self.text_insert.emit(
-                    "[НЕ OK] Проводной интернет по технологии FTTx, xPON с пропускной способностью не менее 75 Мбит/с\n",
-                    "red")
-                self.app_instance.failed_checks.append(
-                    "Проводной интернет по технологии FTTx, xPON с пропускной способностью не менее 75 Мбит/с")
-
-            self.text_insert.emit(f"     Загрузка: {download_speed:.0f} Мбит/с\n", "black")
-            self.text_insert.emit(f"     Отдача:  {upload_speed:.0f} Мбит/с\n", "black")
-            self.text_insert.emit(f"     Пинг:  {ping:.0f} мс\n", "black")
-
-        # CPU check
-        self.status_update.emit("[2/4] Проверяю оборудование (процессор)")
-        cpu_name = utils.cpu.get_cpu_name()
-        cpu_cores = psutil.cpu_count(logical=False)
-        logical_cores = psutil.cpu_count(logical=True)
-
-        if cpu_cores >= 2:
-            self.text_insert.emit("[OK] Процессор в норме\n", "green")
-        else:
-            self.text_insert.emit("[НЕ OK] Процессор с не менее чем двумя ядрами\n", "red")
-            self.app_instance.failed_checks.append("Процессор с не менее чем двумя ядрами")
-
-        self.text_insert.emit(f"     Модель: {cpu_name}\n", "black")
-        self.text_insert.emit(f"     Виртуальных ядер: {logical_cores}\n", "black")
-        self.text_insert.emit(f"     Физических ядер: {cpu_cores}\n", "black")
-
-        # Network adapter check
-        self.status_update.emit("[2/4] Проверяю оборудование (сетевой адаптер)")
-        ethernet_available = utils.internet.check_ethernet_connection()
-
-        if ethernet_available:
-            self.text_insert.emit("[OK] Подключение по кабелю\n", "green")
-            adapters = utils.internet.get_ethernet_adapter_info()
-            for adapter in adapters:
-                self.text_insert.emit(f"     Сетевая карта: {adapter['adapter_name']}\n", "black")
-                self.text_insert.emit(f"     Дуплекс: {adapter['speed']} Мбит/с\n", "black")
-        else:
-            self.text_insert.emit("[НЕ OK] Нет возможности подключения кабелем (Ethernet адаптер отсутствует)\n", "red")
-            self.app_instance.failed_checks.append("Нет возможности подключения кабелем (Ethernet адаптер отсутствует)")
-
-        # OS compatibility check
-        self.status_update.emit("[2/4] Проверяю оборудование (операционная система)")
-        citrix_compatible, version = utils.system.get_citrix_compatibility()
-
-        if citrix_compatible:
-            self.text_insert.emit("[OK] Поддержка Citrix в норме\n", "green")
-        else:
-            self.text_insert.emit("[НЕ OK] Citrix не поддерживается\n", "red")
-            self.app_instance.failed_checks.append("Citrix не поддерживается")
-
-        self.text_insert.emit(
-            f"     Версия ОС: {platform.system()} {platform.release()} {platform.version().split('.')[2]} \n", "black")
-        self.text_insert.emit(f"     Версия Citrix: {version} \n", "black")
-
-        # RAM check
-        self.status_update.emit("[2/4] Проверяю оборудование (ОЗУ)")
-        ram_gb = psutil.virtual_memory().total / (1024 ** 3)
-        pythoncom.CoInitialize()
-        c = wmi.WMI()
-        ram_freq_list = [mem.Speed for mem in c.Win32_PhysicalMemory()]
-        pythoncom.CoUninitialize()
-
-        if ram_gb >= 4:
-            self.text_insert.emit("[OK] Память в норме\n", "green")
-        else:
-            self.text_insert.emit("[НЕ OK] Оперативная память от 4 ГБ\n", "red")
-            self.app_instance.failed_checks.append("Оперативная память от 4 ГБ")
-
-        self.text_insert.emit(f"     Всего ОЗУ: {ram_gb:.0f} ГБ\n", "black")
-        if ram_freq_list:
-            self.text_insert.emit(f"     Частота: {ram_freq_list[0]} МГц\n", "black")
-
-        # Display and GPU check
-        self.status_update.emit("[2/4] Проверяю оборудование (экран и видеокарта)")
-        # Note: get_screen_resolution needs to be adapted for PyQt
-        width = QApplication.desktop().screenGeometry().width()
-        height = QApplication.desktop().screenGeometry().height()
-        gpu_name = utils.gpu.get_gpu_name()
-
-        if width >= 1600 and height >= 900:
-            self.text_insert.emit("[OK] Дисплей в норме\n", "green")
-        else:
-            self.text_insert.emit("[НЕ OK] Минимальное разрешение экрана 1600х900 и более\n", "red")
-            self.app_instance.failed_checks.append("Минимальное разрешение экрана 1600х900 и более")
-
-        self.text_insert.emit(f"     Разрешение дисплея: {width}x{height}\n", "black")
-        self.text_insert.emit(f"     Видеокарта: {gpu_name}\n", "black")
-
-        # Disk space check
-        self.status_update.emit("[3/4] Проверяю диск")
-        disk_usage = psutil.disk_usage("C:")
-        free_gb = disk_usage.free / (1024 ** 3)
-
-        if free_gb >= 10:
-            self.text_insert.emit("[OK] Место на системном диске в норме\n", "green")
-        else:
-            self.text_insert.emit("[НЕ OK] Недостаточно места на диске\n", "red")
-            self.app_instance.failed_checks.append("Недостаточно места на диске")
-
-        self.text_insert.emit(f"     Свободно: {round(free_gb)} ГБ\n", "black")
-
-        # Microphone check
-        self.status_update.emit("[4/4] Проверяю периферию (микрофон)")
-        mic_available = utils.peripherals.check_microphone()
-
-        if mic_available:
-            self.text_insert.emit("[OK] Микрофон обнаружен\n", "green")
-        else:
-            self.text_insert.emit("[НЕ OK] Микрофон не найден\n", "red")
-            self.app_instance.failed_checks.append("Микрофон не найден")
-
-        # Camera check
-        self.status_update.emit("[4/4] Проверяю периферию (камера)")
-        camera_available, cam_width, cam_height = utils.peripherals.check_camera()
-        camera_hd = cam_width >= 1280 and cam_height >= 720
-
-        if camera_available and camera_hd:
-            self.text_insert.emit("[OK] Web-камера обнаружена\n", "green")
-            self.text_insert.emit(f"      Разрешение: {cam_width}x{cam_height}\n", "black")
-        else:
-            self.text_insert.emit("[НЕ OK] Web-камера не соответствует требованиям\n", "red")
-            self.app_instance.failed_checks.append("Web-камера не соответствует требованиям")
-
-        # Final results
-        self.text_insert.emit("\n" + "-" * 70 + "\n", "black")
-
-        if not self.app_instance.failed_checks:
-            self.text_insert.emit("Все проверки пройдены. ПК соответствует требованиям для удаленной работы\n", 'green')
-        else:
-            self.text_insert.emit("ПК не соответствует требованиям:\n", 'red')
-            for issue in self.app_instance.failed_checks:
-                if "процессор" in issue.lower():
-                    self.text_insert.emit("- Требуется обновить процессор\n", 'red')
-                elif "память" in issue.lower():
-                    self.text_insert.emit("- Информация о памяти не получена\n", 'red')
-                elif "кабель" in issue.lower() or "интернет" in issue.lower():
-                    self.text_insert.emit("- Скорость интернета > 75 Мбит/с\n", 'red')
-                elif "микрофон" in issue.lower():
-                    self.text_insert.emit("- Наличие микрофона\n", 'red')
-                elif "web-камера" in issue.lower():
-                    self.text_insert.emit("- Наличие web-камеры с разрешением не хуже HD (внешней или встроенной)\n",
-                                          'red')
+        # Run diagnostics in sequence
+        self._test_internet_speed()
+        self._test_cpu()
+        self._test_network_adapter()
+        self._test_os_compatibility()
+        self._test_ram()
+        self._test_display_gpu()
+        self._test_disk_space()
+        self._test_microphone()
+        self._test_camera()
+        self._generate_final_report()
 
         self.status_update.emit("Диагностика завершена")
         self.diagnostics_complete.emit()
 
+    def _test_internet_speed(self):
+        """Test internet connection speed."""
+        self.status_update.emit("[1/4] Измеряю скорость интернета")
+
+        download_speed, upload_speed, ping, error = utils.internet.run_speed_test_safe()
+
+        if error:
+            self._log_error(f"Ошибка тестирования скорости: {error}\nЗамерьте скорость вручную на speedtest.net")
+            self.app_instance.failed_checks.append(f"internet")
+        else:
+            if download_speed >= MIN_INTERNET_SPEED:
+                self._log_success("Соединение в норме")
+            else:
+                self._log_failure(
+                    f"Проводной интернет по технологии FTTx, xPON с пропускной способностью не менее {MIN_INTERNET_SPEED} Мбит/с")
+                self.app_instance.failed_checks.append(
+                    f"internet")
+
+            self._log_info(f"Загрузка: {download_speed:.0f} Мбит/с")
+            self._log_info(f"Отдача: {upload_speed:.0f} Мбит/с")
+            self._log_info(f"Пинг: {ping:.0f} мс")
+
+    def _test_cpu(self):
+        """Test CPU specifications."""
+        self.status_update.emit("[2/4] Проверяю оборудование (процессор)")
+
+        cpu_name, cpu_cores, cpu_logical_cores = utils.cpu.get_cpu_info()
+
+        if cpu_cores >= MIN_CPU_CORES:
+            self._log_success("Процессор в норме")
+        else:
+            self._log_failure(f"Процессор с не менее чем {MIN_CPU_CORES} ядрами")
+            self.app_instance.failed_checks.append(f"cpu")
+
+        self._log_info(f"Модель: {cpu_name}")
+        self._log_info(f"Виртуальных ядер: {cpu_logical_cores}")
+        self._log_info(f"Физических ядер: {cpu_cores}")
+
+    def _test_network_adapter(self):
+        """Test network adapter availability."""
+        self.status_update.emit("[2/4] Проверяю оборудование (сетевой адаптер)")
+
+        ethernet_available = utils.internet.check_ethernet_connection()
+
+        if ethernet_available:
+            self._log_success("Подключение по кабелю")
+            adapters = utils.internet.get_ethernet_adapter_info()
+            for adapter in adapters:
+                self._log_info(f"Сетевая карта: {adapter['adapter_name']}")
+                self._log_info(f"Дуплекс: {adapter['speed']} Мбит/с")
+        else:
+            self._log_failure("Нет возможности подключения кабелем (Ethernet адаптер отсутствует)")
+            self.app_instance.failed_checks.append("ethernet")
+
+    def _test_os_compatibility(self):
+        """Test operating system compatibility with Citrix."""
+        self.status_update.emit("[2/4] Проверяю оборудование (операционная система)")
+
+        citrix_compatible, version = utils.system.get_citrix_compatibility()
+
+        if citrix_compatible:
+            self._log_success("Поддержка Citrix в норме")
+        else:
+            self._log_failure("Citrix не поддерживается")
+            self.app_instance.failed_checks.append("citrix")
+
+        os_version = platform.version().split('.')[2] if '.' in platform.version() else platform.version()
+        self._log_info(f"Версия ОС: {platform.system()} {platform.release()} {os_version}")
+        self._log_info(f"Версия Citrix: {version}")
+
+    def _test_ram(self):
+        """Test RAM specifications."""
+        self.status_update.emit("[2/4] Проверяю оборудование (ОЗУ)")
+
+        ram_gb, ram_freq = utils.system.get_ram()
+
+        if ram_gb >= MIN_RAM_GB:
+            self._log_success("Память в норме")
+        else:
+            self._log_failure(f"Оперативная память от {MIN_RAM_GB} ГБ")
+            self.app_instance.failed_checks.append(f"ram")
+
+        self._log_info(f"Всего ОЗУ: {ram_gb:.0f} ГБ")
+        if ram_freq:
+            self._log_info(f"Частота: {ram_freq[0]} МГц")
+
+    def _test_display_gpu(self):
+        """Test display and GPU specifications."""
+        self.status_update.emit("[2/4] Проверяю оборудование (экран и видеокарта)")
+
+        width = QApplication.desktop().screenGeometry().width()
+        height = QApplication.desktop().screenGeometry().height()
+        gpu_name = utils.gpu.get_gpu_name()
+        gpu_driver = utils.gpu.get_gpu_driver()
+
+        if width >= MIN_SCREEN_WIDTH and height >= MIN_SCREEN_HEIGHT:
+            self._log_success("Дисплей в норме")
+        else:
+            self._log_failure(f"Минимальное разрешение экрана {MIN_SCREEN_WIDTH}x{MIN_SCREEN_HEIGHT} и более")
+            self.app_instance.failed_checks.append("resolution")
+
+        self._log_info(f"Разрешение дисплея: {width}x{height}")
+        self._log_info(f"Видеокарта: {gpu_name}")
+        self._log_info(f"Драйвер: {gpu_driver[0]}")
+
+    def _test_disk_space(self):
+        """Test available disk space."""
+        self.status_update.emit("[3/4] Проверяю диск")
+
+        disk_usage = psutil.disk_usage("C:")
+        free_gb = disk_usage.free / (1024 ** 3)
+
+        if free_gb >= MIN_DISK_SPACE_GB:
+            self._log_success("Место на системном диске в норме")
+        else:
+            self._log_failure("Недостаточно места на диске")
+            self.app_instance.failed_checks.append("space")
+
+        self._log_info(f"Свободно: {round(free_gb)} ГБ")
+
+    def _test_microphone(self):
+        """Test microphone availability."""
+        self.status_update.emit("[4/4] Проверяю периферию (микрофон)")
+
+        mic_available = utils.peripherals.check_microphone()
+
+        if mic_available:
+            self._log_success("Микрофон обнаружен")
+        else:
+            self._log_failure("Микрофон не найден")
+            self.app_instance.failed_checks.append("mic")
+
+    def _test_camera(self):
+        """Test camera availability and resolution."""
+        self.status_update.emit("[4/4] Проверяю периферию (камера)")
+
+        camera_available, cam_width, cam_height = utils.peripherals.check_camera()
+        camera_hd = cam_width >= 1280 and cam_height >= 720
+
+        if camera_available and camera_hd:
+            self._log_success("Web-камера обнаружена")
+            self._log_info(f"Разрешение: {cam_width}x{cam_height}")
+        else:
+            self._log_failure("Web-камера не соответствует требованиям")
+            self.app_instance.failed_checks.append("cam")
+
+    def _generate_final_report(self):
+        """Generate final diagnostics report."""
+        self.text_insert.emit("\n" + "-" * 70 + "\n", "black")
+
+        if not self.app_instance.failed_checks:
+            self._log_success("Все проверки пройдены. ПК соответствует требованиям для удаленной работы")
+        else:
+            self._log_failure("ПК не соответствует требованиям:")
+            self._generate_failure_summary()
+
+    def _generate_failure_summary(self):
+        """Generate summary of failed checks."""
+        failure_messages = {
+            "internet": f"- Скорость интернета > {MIN_INTERNET_SPEED} Мбит/с",
+            "cpu": f"- Процессор с не менее чем {MIN_CPU_CORES} ядрами",
+            "ethernet": f"- Возможность подключения кабелем Ethernet",
+            "citrix": f"- Поддержка приложения Citrix",
+            "ram": f"- Оперативная память от {MIN_RAM_GB} ГБ",
+            "resolution": f"- Возможность подключения кабелем Ethernet",
+            "space": f"- Свободное место на системной диске не менее {MIN_DISK_SPACE_GB} ГБ",
+            "mic": "- Наличие микрофона",
+            "cam": "- Наличие web-камеры с разрешением не хуже HD (внешней или встроенной)"
+        }
+
+        for issue in self.app_instance.failed_checks:
+            for keyword, message in failure_messages.items():
+                if keyword in issue.lower():
+                    self.text_insert.emit(f"{message}\n", 'red')
+                    break
+
+    def _log_success(self, message: str):
+        """Log a successful check result."""
+        self.text_insert.emit(f"[OK] {message}\n", "green")
+
+    def _log_failure(self, message: str):
+        """Log a failed check result."""
+        self.text_insert.emit(f"[НЕ OK] {message}\n", "red")
+
+    def _log_error(self, message: str):
+        """Log an error message."""
+        self.text_insert.emit(f"{message}\n", 'red')
+
+    def _log_info(self, message: str):
+        """Log an informational message."""
+        self.text_insert.emit(f"     {message}\n", "black")
+
 
 class SystemDiagnosticsApp(QMainWindow):
+    """Main application window for system diagnostics."""
+
     def __init__(self):
         super().__init__()
-        self.failed_checks = []
+        self.failed_checks: List[str] = []
         self.diagnostics_complete = False
         self.test_started = False
         self.animation_timer = QTimer()
-        self.animation_timer.timeout.connect(self.update_animation)
+        self.animation_timer.timeout.connect(self._update_animation)
         self.animation_dots = 0
         self.base_status_text = ""
 
-        self.init_ui()
-        self.show_initial_message()
+        self._init_ui()
+        self._show_initial_message()
 
-    def init_ui(self):
+    def _init_ui(self):
+        """Initialize the user interface."""
         self.setWindowTitle("Диагностика возможности удаленной работы")
-        self.setFixedSize(600, 700)
+        self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setStyleSheet("background-color: #f0eded;")
 
-        # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Main layout
         main_layout = QVBoxLayout(central_widget)
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(15, 15, 15, 15)
 
-        # Header
-        self.create_header(main_layout)
+        self._create_header(main_layout)
+        self._create_main_panel(main_layout)
+        self._create_button_panel(main_layout)
+        self._create_bottom_panel(main_layout)
 
-        # Main panel
-        self.create_main_panel(main_layout)
-
-        # Button panel
-        self.create_button_panel(main_layout)
-
-        # Bottom panel
-        self.create_bottom_panel(main_layout)
-
-    def create_header(self, parent_layout):
+    def _create_header(self, parent_layout: QVBoxLayout):
+        """Create the application header with logo and title."""
         header_frame = QFrame()
         header_frame.setFixedHeight(65)
         header_frame.setStyleSheet("background-color: #f0eded;")
@@ -280,9 +351,9 @@ class SystemDiagnosticsApp(QMainWindow):
 
         # Logo
         logo_label = QLabel()
-        logopath = os.path.join(os.path.dirname(__file__), 'assets/logo.png')
-        if os.path.exists(logopath):
-            pixmap = QPixmap(logopath)
+        logo_path = os.path.join(os.path.dirname(__file__), 'assets/logo.png')
+        if os.path.exists(logo_path):
+            pixmap = QPixmap(logo_path)
             logo_label.setPixmap(pixmap)
         else:
             logo_label.setText("LOGO")
@@ -290,7 +361,6 @@ class SystemDiagnosticsApp(QMainWindow):
 
         logo_label.setFixedSize(50, 45)
         header_layout.addWidget(logo_label)
-
         header_layout.addSpacing(10)
 
         # Title
@@ -302,7 +372,8 @@ class SystemDiagnosticsApp(QMainWindow):
         header_layout.addStretch()
         parent_layout.addWidget(header_frame)
 
-    def create_main_panel(self, parent_layout):
+    def _create_main_panel(self, parent_layout: QVBoxLayout):
+        """Create the main content panel with text area and status."""
         self.main_frame = QFrame()
         self.main_frame.setStyleSheet("""
             QFrame {
@@ -315,7 +386,7 @@ class SystemDiagnosticsApp(QMainWindow):
         main_frame_layout = QVBoxLayout(self.main_frame)
         main_frame_layout.setContentsMargins(20, 20, 20, 20)
 
-        # Text area
+        # Text display area
         self.text_widget = QTextEdit()
         self.text_widget.setFont(QFont("Arial", 10))
         self.text_widget.setStyleSheet("""
@@ -327,17 +398,18 @@ class SystemDiagnosticsApp(QMainWindow):
         self.text_widget.setReadOnly(True)
         main_frame_layout.addWidget(self.text_widget)
 
-        # Status label (initially hidden)
+        # Status label
         self.status_label = QLabel("")
         self.status_label.setFont(QFont("Arial", 10, QFont.StyleItalic))
         self.status_label.setStyleSheet("color: gray; padding: 5px;")
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.hide()  # Initially hidden
+        self.status_label.hide()
         main_frame_layout.addWidget(self.status_label)
 
         parent_layout.addWidget(self.main_frame)
 
-    def create_button_panel(self, parent_layout):
+    def _create_button_panel(self, parent_layout: QVBoxLayout):
+        """Create the button panel with start, copy, and restart buttons."""
         button_frame = QFrame()
         button_frame.setStyleSheet("background-color: #f0eded;")
         button_layout = QVBoxLayout(button_frame)
@@ -347,24 +419,16 @@ class SystemDiagnosticsApp(QMainWindow):
         # Start button
         self.start_button = RoundedButton("Начать тест")
         self.start_button.setFont(QFont("Arial", 12, QFont.Bold))
-        self.start_button.setStyleSheet("""
-            QPushButton {
-                background-color: #FF312C;
-                color: white;
-                border: none;
-                padding: 10px 30px;
-            }
-            QPushButton:hover {
-                background-color: #e02e29;
-            }
-            QPushButton:pressed {
-                background-color: #c52821;
-            }
-        """)
+        self.start_button.setStyleSheet(self._get_button_style("#FF312C", "#e02e29", "#c52821"))
         self.start_button.clicked.connect(self.start_test)
         button_layout.addWidget(self.start_button)
 
-        # Result buttons container
+        # Result buttons
+        self._create_result_buttons(button_layout)
+        parent_layout.addWidget(button_frame)
+
+    def _create_result_buttons(self, parent_layout: QVBoxLayout):
+        """Create copy and restart buttons."""
         result_buttons_frame = QFrame()
         result_buttons_layout = QHBoxLayout(result_buttons_frame)
         result_buttons_layout.setAlignment(Qt.AlignCenter)
@@ -372,40 +436,14 @@ class SystemDiagnosticsApp(QMainWindow):
         # Copy button
         self.copy_button = RoundedButton("Скопировать результат")
         self.copy_button.setFont(QFont("Arial", 10, QFont.Bold))
-        self.copy_button.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                padding: 8px 20px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:pressed {
-                background-color: #3d8b40;
-            }
-        """)
+        self.copy_button.setStyleSheet(self._get_button_style("#4CAF50", "#45a049", "#3d8b40"))
         self.copy_button.clicked.connect(self.copy_to_clipboard)
         self.copy_button.hide()
 
         # Restart button
         self.restart_button = RoundedButton("Перезапустить тест")
         self.restart_button.setFont(QFont("Arial", 10, QFont.Bold))
-        self.restart_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                padding: 8px 20px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:pressed {
-                background-color: #1565C0;
-            }
-        """)
+        self.restart_button.setStyleSheet(self._get_button_style("#2196F3", "#1976D2", "#1565C0"))
         self.restart_button.clicked.connect(self.restart_test)
         self.restart_button.hide()
 
@@ -413,10 +451,10 @@ class SystemDiagnosticsApp(QMainWindow):
         result_buttons_layout.addSpacing(10)
         result_buttons_layout.addWidget(self.restart_button)
 
-        button_layout.addWidget(result_buttons_frame)
-        parent_layout.addWidget(button_frame)
+        parent_layout.addWidget(result_buttons_frame)
 
-    def create_bottom_panel(self, parent_layout):
+    def _create_bottom_panel(self, parent_layout: QVBoxLayout):
+        """Create the bottom panel with license agreement link."""
         bottom_frame = QFrame()
         bottom_frame.setStyleSheet("background-color: #f0eded;")
         bottom_layout = QHBoxLayout(bottom_frame)
@@ -428,7 +466,8 @@ class SystemDiagnosticsApp(QMainWindow):
         bottom_layout.addWidget(prefix_label)
 
         link_label = QLabel(
-            '<a href="#" style="color: #0066cc; text-decoration: underline;">условия пользовательского соглашения</a>')
+            '<a href="#" style="color: #0066cc; text-decoration: underline;">условия пользовательского соглашения</a>'
+        )
         link_label.setFont(QFont("Arial", 9))
         link_label.linkActivated.connect(lambda: webbrowser.open_new(LICENSE_URL))
         bottom_layout.addWidget(link_label)
@@ -436,25 +475,50 @@ class SystemDiagnosticsApp(QMainWindow):
         bottom_layout.addStretch()
         parent_layout.addWidget(bottom_frame)
 
-    def show_initial_message(self):
-        self.text_widget.append("Добро пожаловать в программу диагностики возможности удаленной работы!\n")
-        self.text_widget.append("Эта программа проверит:")
-        self.text_widget.append("• Скорость интернет-соединения")
-        self.text_widget.append("• Параметры процессора и оперативной памяти")
-        self.text_widget.append("• Сетевое оборудование")
-        self.text_widget.append("• Дисплей и видеокарту")
-        self.text_widget.append("• Свободное место на системном диске")
-        self.text_widget.append("• Наличие микрофона и веб-камеры\n")
-        self.text_widget.append("Готовы начать тестирование? Нажмите кнопку 'Начать тест'.")
+    def _get_button_style(self, normal_color: str, hover_color: str, pressed_color: str) -> str:
+        """Generate button stylesheet with specified colors."""
+        return f"""
+            QPushButton {{
+                background-color: {normal_color};
+                color: white;
+                border: none;
+                padding: 8px 20px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_color};
+            }}
+            QPushButton:pressed {{
+                background-color: {pressed_color};
+            }}
+        """
+
+    def _show_initial_message(self):
+        """Display the initial welcome message."""
+        messages = [
+            "Добро пожаловать в программу диагностики возможности удаленной работы!\n",
+            "Эта программа проверит:",
+            "• Скорость интернет-соединения",
+            "• Параметры процессора и оперативной памяти",
+            "• Сетевое оборудование",
+            "• Дисплей и видеокарту",
+            "• Свободное место на системном диске",
+            "• Наличие микрофона и веб-камеры\n",
+            "Готовы начать тестирование? Нажмите кнопку 'Начать тест'."
+        ]
+
+        for message in messages:
+            self.text_widget.append(message)
 
     def start_test(self):
+        """Start the diagnostics test."""
         if not self.test_started:
             self.test_started = True
             self.start_button.hide()
             self.text_widget.clear()
-            self.run_diagnostics()
+            self._run_diagnostics()
 
     def restart_test(self):
+        """Restart the diagnostics test."""
         self.animation_timer.stop()
         self.diagnostics_complete = False
         self.test_started = True
@@ -462,18 +526,19 @@ class SystemDiagnosticsApp(QMainWindow):
 
         self.copy_button.hide()
         self.restart_button.hide()
-
         self.text_widget.clear()
-        self.run_diagnostics()
+        self._run_diagnostics()
 
-    def run_diagnostics(self):
+    def _run_diagnostics(self):
+        """Execute diagnostics in a separate thread."""
         self.diagnostics_thread = DiagnosticsThread(self)
-        self.diagnostics_thread.status_update.connect(self.update_status)
-        self.diagnostics_thread.text_insert.connect(self.insert_text)
-        self.diagnostics_thread.diagnostics_complete.connect(self.on_diagnostics_complete)
+        self.diagnostics_thread.status_update.connect(self._update_status)
+        self.diagnostics_thread.text_insert.connect(self._insert_text)
+        self.diagnostics_thread.diagnostics_complete.connect(self._on_diagnostics_complete)
         self.diagnostics_thread.start()
 
-    def update_status(self, message):
+    def _update_status(self, message: str):
+        """Update the status display with animation."""
         if message == "Диагностика завершена" or message == "":
             self.animation_timer.stop()
             if message == "":
@@ -486,30 +551,34 @@ class SystemDiagnosticsApp(QMainWindow):
             self.animation_dots = 0
             self.status_label.show()
             if not self.animation_timer.isActive():
-                self.animation_timer.start(500)
+                self.animation_timer.start(ANIMATION_INTERVAL)
 
-    def update_animation(self):
+    def _update_animation(self):
+        """Update the animated dots in status message."""
         dots = "." * ((self.animation_dots % 3) + 1)
         self.status_label.setText(f"{self.base_status_text}{dots}")
         self.animation_dots += 1
 
-    def insert_text(self, text, color):
-        if color == "green":
-            self.text_widget.setTextColor(QColor("#008000"))
-        elif color == "red":
-            self.text_widget.setTextColor(QColor("#FF0000"))
-        else:
-            self.text_widget.setTextColor(QColor("black"))
+    def _insert_text(self, text: str, color: str):
+        """Insert colored text into the display widget."""
+        color_map = {
+            "green": QColor("#008000"),
+            "red": QColor("#FF0000"),
+            "black": QColor("black")
+        }
 
+        self.text_widget.setTextColor(color_map.get(color, QColor("black")))
         self.text_widget.insertPlainText(text)
         self.text_widget.moveCursor(self.text_widget.textCursor().End)
 
-    def on_diagnostics_complete(self):
+    def _on_diagnostics_complete(self):
+        """Handle completion of diagnostics."""
         self.diagnostics_complete = True
         self.copy_button.show()
         self.restart_button.show()
 
     def copy_to_clipboard(self):
+        """Copy diagnostics results to clipboard."""
         if self.diagnostics_complete:
             content = self.text_widget.toPlainText()
             clipboard = QApplication.clipboard()
@@ -519,31 +588,42 @@ class SystemDiagnosticsApp(QMainWindow):
             QMessageBox.warning(self, "Предупреждение", "Диагностика еще не завершена")
 
 
-def main():
-    required_modules = ['psutil', 'speedtest', 'cv2', 'pyaudio', 'numpy']
-    missing_modules = []
+def validate_dependencies() -> Optional[str]:
+    """Validate that required modules are available."""
+    required_modules = {
+        'psutil': 'psutil',
+        'speedtest': 'speedtest-cli',
+        'cv2': 'opencv-python',
+        'pyaudio': 'pyaudio',
+        'numpy': 'numpy'
+    }
 
-    for module in required_modules:
+    missing_modules = []
+    for module, package in required_modules.items():
         try:
             __import__(module)
         except ImportError:
-            missing_modules.append(module)
+            missing_modules.append(package)
 
     if missing_modules:
-        error_msg = f"Отсутствуют необходимые модули: {', '.join(missing_modules)}\n\n"
-        error_msg += "Установите зависимости:\n"
-        if 'cv2' in missing_modules:
-            error_msg += "pip install opencv-python\n"
-        if 'pyaudio' in missing_modules:
-            error_msg += "pip install pyaudio\n"
-        if 'numpy' in missing_modules:
-            error_msg += "pip install numpy\n"
-        error_msg += "pip install psutil speedtest-cli"
+        return f"""Отсутствуют необходимые модули: {', '.join(missing_modules)}
 
+Установите зависимости:
+pip install {' '.join(missing_modules)}"""
+
+    return None
+
+
+def main():
+    """Main application entry point."""
+    # Validate dependencies
+    dependency_error = validate_dependencies()
+    if dependency_error:
         app = QApplication([])
-        QMessageBox.critical(None, "Ошибка", error_msg)
+        QMessageBox.critical(None, "Ошибка", dependency_error)
         return
 
+    # Launch application
     app = QApplication([])
     window = SystemDiagnosticsApp()
     window.show()
