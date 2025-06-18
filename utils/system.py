@@ -1,5 +1,9 @@
 import platform
 
+import psutil
+import pythoncom
+import wmi
+
 
 def get_screen_resolution(self):
     """Get screen resolution"""
@@ -23,7 +27,7 @@ def get_citrix_compatibility():
     try:
         os_build = platform.version().split('.')[2]
     except IndexError:
-        os_build = None # Handle cases where build number might not be available in expected format
+        os_build = None  # Handle cases where build number might not be available in expected format
 
     if os_name == "Windows":
         if os_release == "11":
@@ -39,7 +43,7 @@ def get_citrix_compatibility():
                 if "and later" in citrix_version_info:
                     # Extract the base version
                     base_version = citrix_version_info.split(" ")[0]
-                    return True, f"{base_version} или выше" # Indicate support for this and later versions
+                    return True, f"{base_version} или выше"  # Indicate support for this and later versions
                 else:
                     return True, citrix_version_info
             else:
@@ -62,7 +66,7 @@ def get_citrix_compatibility():
                 if "and later" in citrix_version_info:
                     # Extract the base version
                     base_version = citrix_version_info.split(" ")[0]
-                    return True, f"{base_version} или выше" # Indicate support for this and later versions
+                    return True, f"{base_version} или выше"  # Indicate support for this and later versions
                 else:
                     return True, citrix_version_info
             else:
@@ -72,6 +76,20 @@ def get_citrix_compatibility():
     elif os_name == "Linux":
         # For Linux, assuming broad compatibility as per the original function.
         # If specific versions are needed, this would require more detailed lookup.
-        return True, "latest" # Or a specific known compatible version range for Linux
+        return True, "latest"  # Or a specific known compatible version range for Linux
     else:
         return False, "N/A"
+
+
+def get_ram():
+    ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+
+    try:
+        pythoncom.CoInitialize()
+        c = wmi.WMI()
+        ram_freq_list = [mem.Speed for mem in c.Win32_PhysicalMemory()]
+        pythoncom.CoUninitialize()
+    except Exception:
+        ram_freq_list = []
+
+    return ram_gb, ram_freq_list

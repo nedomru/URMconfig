@@ -213,20 +213,20 @@ def get_adapter_hardware_name(interface_name):
 
 
 def run_speed_test_safe():
-        try:
-            if getattr(sys, 'frozen', False):
-                sys.stdin = open(os.devnull, 'r')
-                sys.stdout = open(os.devnull, 'w')
-                sys.stderr = open(os.devnull, 'w')
+    try:
+        if getattr(sys, 'frozen', False):
+            sys.stdin = open(os.devnull, 'r')
+            sys.stdout = open(os.devnull, 'w')
+            sys.stderr = open(os.devnull, 'w')
 
-            st = speedtest.Speedtest()
-            st.get_best_server()
+        st = speedtest.Speedtest()
+        st.get_best_server()
 
-            download_speed = st.download() / 1024 / 1024
-            upload_speed = st.upload() / 1024 / 1024
-            ping = st.results.ping
+        download_speed = st.download() / 1024 / 1024
+        upload_speed = st.upload() / 1024 / 1024
+        ping = st.results.ping
 
-            return download_speed, upload_speed, ping, None
+        return download_speed, upload_speed, ping, None
 
-        except Exception as e:
-            return 0, 0, 0, str(e)
+    except Exception as e:
+        return 0, 0, 0, str(e)
