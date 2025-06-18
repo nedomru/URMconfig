@@ -1,3 +1,5 @@
+import platform
+import re
 import subprocess
 
 
@@ -21,27 +23,69 @@ def get_gpu_name():
 
 
 def get_gpu_driver():
+    driver_version = ""
+
+    system = platform.system() # Windows or Linux or Darwin
+
     """Get Windows video driver version using wmic"""
-    try:
-        # Get GPU info using wmic
-        result = subprocess.run([
-            'wmic', 'path', 'win32_VideoController',
-            'get', 'name,DriverVersion', '/format:csv'
-        ], capture_output=True, text=True, check=True)
+    if system == "Windows":
+        try:
+            # Get GPU info using wmic
+            result = subprocess.run([
+                'wmic', 'path', 'win32_VideoController',
+                'get', 'name,DriverVersion', '/format:csv'
+            ], capture_output=True, text=True, check=True)
 
-        lines = result.stdout.strip().split('\n')
-        drivers = []
+            lines = result.stdout.strip().split('\n')
 
-        for line in lines[1:]:  # Skip header
-            if line.strip():
-                parts = line.split(',')
-                if len(parts) >= 3:
-                    name = parts[2].strip()
-                    version = parts[1].strip()
-                    if name and version:
-                        drivers.append(f"{version}")
+            for line in lines[1:]:  # Skip header
+                if line.strip():
+                    parts = line.split(',')
+                    if len(parts) >= 3:
+                        version = parts[1].strip()
+                        if version:
+                            driver_version = version
+                            break
+        except Exception as e:
+            print(f"Произошла ошибка при проверке драйвера: {e}")
+    elif system == "Linux":
+        try:
+            # Check NVIDIA driver
+            result = subprocess.run(['nvidia-smi', '--query-gpu=driver_version', '--format=csv,noheader,nounits'],
+                                    capture_output=True, text=True)
+            if result.returncode == 0:
+                driver_version = result.stdout.strip()
+        except FileNotFoundError:
+            pass
 
-        return drivers if drivers else ["Не найдено"]
+        try:
+            # Check AMD driver via modinfo
+            result = subprocess.run(['modinfo', 'amdgpu'], capture_output=True, text=True)
+            if result.returncode == 0:
+                version_match = re.search(r'version:\s*(.+)', result.stdout)
+                if version_match:
+                    driver_version = version_match.group(1).strip()
+        except FileNotFoundError:
+            pass
 
-    except subprocess.CalledProcessError as e:
-        return [f"Ошибка проверки драйвера: {e}"]
+        try:
+            # Check Intel driver
+            result = subprocess.run(['modinfo', 'i915'], capture_output=True, text=True)
+            if result.returncode == 0:
+                version_match = re.search(r'version:\s*(.+)', result.stdout)
+                if version_match:
+                    driver_version = version_match.group(1).strip()
+        except FileNotFoundError:
+            pass
+
+        # Fallback: check lspci for GPU info
+        if not driver_version:
+            try:
+                result = subprocess.run(['lspci', '-k'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    gpu_lines = [line for line in result.stdout.split('\n')
+                                 if 'VGA' in line or 'Display' in line]
+                    driver_version = gpu_lines[:3]  # Limit output
+            except FileNotFoundError:
+                pass
+    return driver_version
