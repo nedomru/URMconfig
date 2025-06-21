@@ -177,7 +177,7 @@ The application includes comprehensive Citrix Workspace App compatibility checki
 ### Setting up Development Environment
 ```bash
 # Clone and setup
-git clone <repository-url>
+git clone https://github.com/nedomru/URMconfig
 cd urmconfig
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
