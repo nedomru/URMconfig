@@ -59,7 +59,7 @@ URMconfig is a professional desktop application designed to comprehensively asse
 ### Option 2: Run from Source
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/nedomru/URMconfig
 cd urmconfig
 
 # Install dependencies
