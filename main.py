@@ -7,6 +7,7 @@ if a computer meets the requirements for remote work, including:
 - Hardware compatibility checks
 - Peripheral device verification
 - OS and software compatibility
+- Automatic FTP upload of results
 """
 
 import os
@@ -20,7 +21,7 @@ from PyQt5.QtGui import QPixmap, QFont, QPainter, QPainterPath, QColor
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
     QWidget, QLabel, QPushButton, QTextEdit, QFrame,
-    QMessageBox
+    QMessageBox, QCheckBox
 )
 
 # Import validation with user-friendly error handling
@@ -39,11 +40,12 @@ import utils.gpu
 import utils.internet
 import utils.peripherals
 import utils.system
+import utils.ftp
 
 # Application constants
 LICENSE_URL = "https://sos.dom.ru/services/license_URM.pdf"
 WINDOW_WIDTH = 600
-WINDOW_HEIGHT = 700
+WINDOW_HEIGHT = 750  # Increased height for FTP option
 ANIMATION_INTERVAL = 500
 MIN_INTERNET_SPEED = 75  # Mbps
 MIN_CPU_CORES = 2
@@ -51,6 +53,7 @@ MIN_RAM_GB = 4
 MIN_SCREEN_WIDTH = 1600
 MIN_SCREEN_HEIGHT = 900
 MIN_DISK_SPACE_GB = 10
+FTP_SERVER = "212.33.255.58"
 
 
 class RoundedButton(QPushButton):
@@ -90,6 +93,7 @@ class DiagnosticsThread(QThread):
     status_update = pyqtSignal(str)
     text_insert = pyqtSignal(str, str)  # text, color
     diagnostics_complete = pyqtSignal()
+    ftp_upload_result = pyqtSignal(bool, str)  # success, message
 
     def __init__(self, app_instance):
         super().__init__()
@@ -111,8 +115,26 @@ class DiagnosticsThread(QThread):
         self._test_camera()
         self._generate_final_report()
 
+        # Upload results to FTP
+        self._upload_results_to_ftp()
+
         self.status_update.emit("Диагностика завершена")
         self.diagnostics_complete.emit()
+
+    def _upload_results_to_ftp(self):
+        """Upload diagnostic results to FTP server."""
+        self.status_update.emit("Загружаю результаты на сервер...")
+
+        # Get the diagnostic results text
+        content = self.app_instance.text_widget.toPlainText()
+
+        # Attempt FTP upload
+        success, error_msg = utils.ftp.upload_diagnostic_results(content, FTP_SERVER)
+
+        if success:
+            self.ftp_upload_result.emit(True, "Результаты успешно загружены на сервер")
+        else:
+            self.ftp_upload_result.emit(False, f"Ошибка загрузки на сервер: {error_msg}")
 
     def _test_internet_speed(self):
         """Test internet connection speed."""
@@ -338,6 +360,7 @@ class SystemDiagnosticsApp(QMainWindow):
 
         self._create_header(main_layout)
         self._create_main_panel(main_layout)
+        self._create_ftp_option(main_layout)
         self._create_button_panel(main_layout)
         self._create_bottom_panel(main_layout)
 
@@ -407,6 +430,16 @@ class SystemDiagnosticsApp(QMainWindow):
         main_frame_layout.addWidget(self.status_label)
 
         parent_layout.addWidget(self.main_frame)
+
+    def _create_ftp_option(self, parent_layout: QVBoxLayout):
+        """Create the FTP upload option checkbox."""
+        ftp_frame = QFrame()
+        ftp_frame.setStyleSheet("background-color: #f0eded;")
+        ftp_layout = QHBoxLayout(ftp_frame)
+        ftp_layout.setContentsMargins(10, 5, 10, 5)
+
+        ftp_layout.addStretch()
+        parent_layout.addWidget(ftp_frame)
 
     def _create_button_panel(self, parent_layout: QVBoxLayout):
         """Create the button panel with start, copy, and restart buttons."""
@@ -535,6 +568,7 @@ class SystemDiagnosticsApp(QMainWindow):
         self.diagnostics_thread.status_update.connect(self._update_status)
         self.diagnostics_thread.text_insert.connect(self._insert_text)
         self.diagnostics_thread.diagnostics_complete.connect(self._on_diagnostics_complete)
+        self.diagnostics_thread.ftp_upload_result.connect(self._handle_ftp_upload_result)
         self.diagnostics_thread.start()
 
     def _update_status(self, message: str):
@@ -576,6 +610,13 @@ class SystemDiagnosticsApp(QMainWindow):
         self.diagnostics_complete = True
         self.copy_button.show()
         self.restart_button.show()
+
+    def _handle_ftp_upload_result(self, success: bool, message: str):
+        """Handle FTP upload result."""
+        if success:
+            self._insert_text(f"\n[OK] {message}\n", "green")
+        else:
+            self._insert_text(f"\n[Предупреждение] {message}\n", "red")
 
     def copy_to_clipboard(self):
         """Copy diagnostics results to clipboard."""
