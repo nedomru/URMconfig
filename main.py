@@ -123,18 +123,13 @@ class DiagnosticsThread(QThread):
 
     def _upload_results_to_ftp(self):
         """Upload diagnostic results to FTP server."""
-        self.status_update.emit("Загружаю результаты на сервер...")
-
         # Get the diagnostic results text
         content = self.app_instance.text_widget.toPlainText()
 
         # Attempt FTP upload
         success, error_msg = utils.ftp.upload_diagnostic_results(content, FTP_SERVER)
-
-        if success:
-            self.ftp_upload_result.emit(True, "Результаты успешно загружены на сервер")
-        else:
-            self.ftp_upload_result.emit(False, f"Ошибка загрузки на сервер: {error_msg}")
+        if not success:
+            self.ftp_upload_result.emit(False, f"Ошибка загрузки результата: {error_msg}")
 
     def _test_internet_speed(self):
         """Test internet connection speed."""
