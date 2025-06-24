@@ -239,7 +239,11 @@ class DiagnosticsThread(QThread):
 
         self._log_info(f"Разрешение дисплея: {width}x{height}")
         self._log_info(f"Видеокарта: {gpu_name}")
-        self._log_info(f"Драйвер: {gpu_driver[0]}")
+        # Fix: Ensure driver info is properly formatted
+        if isinstance(gpu_driver, list) and len(gpu_driver) > 0:
+            self._log_info(f"Драйвер: {gpu_driver[0]}")
+        else:
+            self._log_info(f"Драйвер: {gpu_driver}")
 
     def _test_disk_space(self):
         """Test available disk space."""
@@ -281,6 +285,9 @@ class DiagnosticsThread(QThread):
         else:
             self._log_failure("Web-камера не соответствует требованиям")
             self.app_instance.failed_checks.append("cam")
+            # Still log resolution info if camera was detected but resolution is low
+            if camera_available:
+                self._log_info(f"Разрешение: {cam_width}x{cam_height}")
 
     def _generate_final_report(self):
         """Generate final diagnostics report."""
@@ -291,26 +298,6 @@ class DiagnosticsThread(QThread):
         else:
             self._log_failure("ПК не соответствует требованиям:")
             self._generate_failure_summary()
-
-    def _generate_failure_summary(self):
-        """Generate summary of failed checks."""
-        failure_messages = {
-            "internet": f"- Скорость интернета > {MIN_INTERNET_SPEED} Мбит/с",
-            "cpu": f"- Процессор с не менее чем {MIN_CPU_CORES} ядрами",
-            "ethernet": f"- Возможность подключения кабелем Ethernet",
-            "citrix": f"- Поддержка приложения Citrix",
-            "ram": f"- Оперативная память от {MIN_RAM_GB} ГБ",
-            "resolution": f"- Возможность подключения кабелем Ethernet",
-            "space": f"- Свободное место на системной диске не менее {MIN_DISK_SPACE_GB} ГБ",
-            "mic": "- Наличие микрофона",
-            "cam": "- Наличие web-камеры с разрешением не хуже HD (внешней или встроенной)"
-        }
-
-        for issue in self.app_instance.failed_checks:
-            for keyword, message in failure_messages.items():
-                if keyword in issue.lower():
-                    self.text_insert.emit(f"{message}\n", 'red')
-                    break
 
     def _log_success(self, message: str):
         """Log a successful check result."""
