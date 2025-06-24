@@ -21,7 +21,7 @@ from PyQt5.QtGui import QPixmap, QFont, QPainter, QPainterPath, QColor
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
     QWidget, QLabel, QPushButton, QTextEdit, QFrame,
-    QMessageBox, QCheckBox
+    QMessageBox
 )
 
 # Import validation with user-friendly error handling
@@ -114,9 +114,6 @@ class DiagnosticsThread(QThread):
         self._test_microphone()
         self._test_camera()
         self._generate_final_report()
-
-        # Upload results to FTP
-        self._upload_results_to_ftp()
 
         self.status_update.emit("Диагностика завершена")
         self.diagnostics_complete.emit()
@@ -274,15 +271,17 @@ class DiagnosticsThread(QThread):
         camera_available, cam_width, cam_height = utils.peripherals.check_camera()
         camera_hd = cam_width >= 1280 and cam_height >= 720
 
-        if camera_available and camera_hd:
-            self._log_success("Web-камера обнаружена")
-            self._log_info(f"Разрешение: {cam_width}x{cam_height}")
-        else:
-            self._log_failure("Web-камера не соответствует требованиям")
-            self.app_instance.failed_checks.append("cam")
-            # Still log resolution info if camera was detected but resolution is low
-            if camera_available:
+        if camera_available:
+            if camera_hd:
+                self._log_success("Web-камера обнаружена")
                 self._log_info(f"Разрешение: {cam_width}x{cam_height}")
+            else:
+                self._log_failure("Web-камера не соответствует требованиям (разрешение ниже HD)")
+                self._log_info(f"Разрешение: {cam_width}x{cam_height}")
+                self.app_instance.failed_checks.append("cam")
+        else:
+            self._log_failure("Web-камера не найдена")
+            self.app_instance.failed_checks.append("cam")
 
     def _generate_final_report(self):
         """Generate final diagnostics report."""
@@ -293,6 +292,26 @@ class DiagnosticsThread(QThread):
         else:
             self._log_failure("ПК не соответствует требованиям:")
             self._generate_failure_summary()
+
+    def _generate_failure_summary(self):
+        """Generate summary of failed checks with specific recommendations."""
+        failure_messages = {
+            "internet": "• Требуется проводной интернет со скоростью не менее 75 Мбит/с",
+            "cpu": f"• Требуется процессор с не менее чем {MIN_CPU_CORES} физическими ядрами",
+            "ethernet": "• Требуется возможность подключения по Ethernet кабелю",
+            "citrix": "• Операционная система не поддерживает требуемую версию Citrix Workspace App",
+            "ram": f"• Требуется оперативная память объемом не менее {MIN_RAM_GB} ГБ",
+            "resolution": f"• Требуется разрешение экрана не менее {MIN_SCREEN_WIDTH}x{MIN_SCREEN_HEIGHT}",
+            "space": f"• Требуется не менее {MIN_DISK_SPACE_GB} ГБ свободного места на системном диске",
+            "mic": "• Требуется рабочий микрофон",
+            "cam": "• Требуется веб-камера с поддержкой HD разрешения (не менее 1280x720)"
+        }
+
+        for failed_check in self.app_instance.failed_checks:
+            if failed_check in failure_messages:
+                self._log_info(failure_messages[failed_check])
+            else:
+                self._log_info(f"• Неизвестная проблема: {failed_check}")
 
     def _log_success(self, message: str):
         """Log a successful check result."""
@@ -592,6 +611,27 @@ class SystemDiagnosticsApp(QMainWindow):
         self.diagnostics_complete = True
         self.copy_button.show()
         self.restart_button.show()
+
+        # Add FTP upload here
+        self._upload_results_to_ftp()
+
+    def _upload_results_to_ftp(self):
+        """Upload diagnostic results to FTP server."""
+        content = self.text_widget.toPlainText()
+
+        # Upload in background thread
+        import threading
+        def upload_background():
+            success, error_msg = utils.ftp.upload_diagnostic_results(content, FTP_SERVER)
+            # Use QTimer to safely update UI from background thread
+            if success:
+                QTimer.singleShot(0, lambda: self._handle_ftp_upload_result(True,
+                                                                            "Результаты успешно отправлены на сервер"))
+            else:
+                QTimer.singleShot(0, lambda: self._handle_ftp_upload_result(False,
+                                                                            f"Ошибка загрузки результата: {error_msg}"))
+
+        threading.Thread(target=upload_background, daemon=True).start()
 
     def _handle_ftp_upload_result(self, success: bool, message: str):
         """Handle FTP upload result."""
