@@ -132,7 +132,7 @@ class DiagnosticsThread(QThread):
         """Test internet connection speed."""
         self.status_update.emit("[1/4] Измеряю скорость интернета")
 
-        download_speed, upload_speed, ping, error = utils.internet.run_speed_test_safe()
+        download_speed, upload_speed, ping, result_link, error = utils.internet.run_speed_test_safe()
 
         if error:
             self._log_error(f"Ошибка тестирования скорости: {error}\nЗамерьте скорость вручную на speedtest.net")
@@ -149,6 +149,7 @@ class DiagnosticsThread(QThread):
             self._log_info(f"Загрузка: {download_speed:.0f} Мбит/с")
             self._log_info(f"Отдача: {upload_speed:.0f} Мбит/с")
             self._log_info(f"Пинг: {ping:.0f} мс")
+            self._log_info(f"Результат на сайте: {result_link}")
 
     def _test_cpu(self):
         """Test CPU specifications."""

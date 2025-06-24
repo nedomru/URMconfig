@@ -14,24 +14,19 @@ def check_ethernet_connection():
     """
     try:
         if platform.system() == "Windows":
-            # Determine the correct encoding for Windows console output
-            # Often 'cp866' for Russian consoles, but it's safer to try a few or let locale handle it
-            # If `text=True` isn't working, explicitly decode with a known encoding.
-            # Let's try explicit encoding first, fallback to default for text=True if it works.
             try:
-                # Attempt to get output with cp866 which is common for Russian Windows consoles
+                # Get network interface information
                 result = subprocess.run(['netsh', 'interface', 'show', 'interface'],
                                         capture_output=True,
-                                        check=True,  # Raise an exception for non-zero exit codes
-                                        encoding='cp866',  # Specify encoding
-                                        errors='replace')  # Replace characters that can't be decoded
+                                        check=True,
+                                        encoding='cp866',
+                                        errors='replace')
                 output = result.stdout
             except UnicodeDecodeError:
-                # Fallback if cp866 fails, let text=True handle it with default encoding
                 print("Warning: cp866 decoding failed, trying default text encoding.")
                 result = subprocess.run(['netsh', 'interface', 'show', 'interface'],
                                         capture_output=True,
-                                        text=True,  # Uses default system encoding (e.g., locale.getpreferredencoding())
+                                        text=True,
                                         check=True,
                                         errors='replace')
                 output = result.stdout
@@ -43,24 +38,55 @@ def check_ethernet_connection():
                 print("Error: 'netsh' command not found. Ensure it's in your system's PATH.")
                 return False
 
-            # Debugging: Print the captured output to verify characters
-            # print("--- Debug: Full netsh output captured ---")
-            # print(output)
-            # print("--- End debug output ---")
+            # Debug: Print the captured output
+            print("--- Debug: Full netsh output captured ---")
+            print(output)
+            print("--- End debug output ---")
 
             lines = output.split('\n')
+
+            # Parse the netsh output more carefully
+            # The output format is typically:
+            # Admin State    State          Type             Interface Name
+            # -----------    -----------    -------          --------------------
+            # Enabled        Connected      Dedicated        Ethernet
+            # Enabled        Disconnected   Dedicated        Ethernet 8
+
             for line in lines:
-                # Check for administrative state (Enabled or Разрешен)
-                # and for the interface type (Ethernet or Local Area Connection)
-                if ('Enabled' in line or 'Разрешен' in line) and \
-                        ('Ethernet' in line or 'Local Area Connection' in line):
-                    # You might also want to check for "Подключен" (Connected)
-                    # if you want to ensure the cable is physically plugged in.
-                    # Example:
-                    # if ('Подключен' in line or 'Connected' in line):
-                    #     return True
-                    # If just admin state is enough:
+                line = line.strip()
+                if not line or line.startswith('-') or 'Admin State' in line or 'Состояние адм.' in line:
+                    continue
+
+                # Split the line into columns (they're space-separated)
+                parts = line.split()
+                if len(parts) >= 4:
+                    admin_state = parts[0]
+                    connection_state = parts[1]
+                    interface_type = parts[2]
+                    # Interface name might contain spaces, so join the rest
+                    interface_name = ' '.join(parts[3:])
+
+                    print(
+                        f"Debug: Found interface - Admin: {admin_state}, State: {connection_state}, Type: {interface_type}, Name: {interface_name}")
+
+                    # Check if this is an enabled Ethernet interface
+                    admin_enabled = admin_state.lower() in ['enabled', 'разрешен']
+                    is_ethernet = ('ethernet' in interface_name.lower() or
+                                   'local area connection' in interface_name.lower() or
+                                   interface_type.lower() == 'dedicated')
+
+                    if admin_enabled and is_ethernet:
+                        print(f"Found enabled Ethernet interface: {interface_name}")
+                        return True
+
+            # Alternative approach: check if any line contains both enabled state and ethernet
+            for line in lines:
+                line_lower = line.lower()
+                if (('enabled' in line_lower or 'разрешен' in line_lower) and
+                        ('ethernet' in line_lower or 'local area connection' in line_lower)):
+                    print(f"Alternative check found Ethernet: {line.strip()}")
                     return True
+
             return False
 
         elif platform.system() == "Linux":
@@ -225,8 +251,9 @@ def run_speed_test_safe():
         download_speed = st.download() / 1024 / 1024
         upload_speed = st.upload() / 1024 / 1024
         ping = st.results.ping
+        result_link = st.results.share()
 
-        return download_speed, upload_speed, ping, None
+        return download_speed, upload_speed, ping, result_link, None
 
     except Exception as e:
         return 0, 0, 0, str(e)
