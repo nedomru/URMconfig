@@ -21,11 +21,13 @@ a = Analysis(
         'numpy',
         'urllib3',
         'requests',
+        'ftplib',  # Added for FTP functionality
         'utils.cpu',
         'utils.gpu',
         'utils.internet',
         'utils.peripherals',
-        'utils.system'
+        'utils.system',
+        'utils.ftp_upload'  # Added new FTP module
     ],
     hookspath=[],
     hooksconfig={},
