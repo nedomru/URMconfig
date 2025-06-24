@@ -19,7 +19,7 @@ def upload_diagnostic_results(content: str, ftp_host: str = "212.33.255.58") -> 
     try:
         # Generate filename with current date and time
         now = datetime.now()
-        filename = f"OtcherURM-{now.strftime('%Y-%m-%d %H-%M-%S')}.txt"
+        filename = f"OtchetURM-{now.strftime('%Y-%m-%d %H-%M-%S')}.txt"
 
         # Create FTP connection
         ftp = ftplib.FTP()
