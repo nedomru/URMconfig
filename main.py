@@ -45,7 +45,7 @@ import utils.updater
 # Application constants
 LICENSE_URL = "https://sos.dom.ru/services/license_URM.pdf"
 WINDOW_WIDTH = 600
-WINDOW_HEIGHT = 750  # Increased height for FTP option
+WINDOW_HEIGHT = 700
 ANIMATION_INTERVAL = 500
 MIN_INTERNET_SPEED = 75  # Mbps
 MIN_CPU_CORES = 2
