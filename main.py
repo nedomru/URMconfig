@@ -17,7 +17,7 @@ from typing import List
 
 import psutil
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QPixmap, QFont, QPainter, QPainterPath, QColor
+from PyQt5.QtGui import QPixmap, QFont, QPainter, QPainterPath, QColor, QIcon
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QHBoxLayout,
     QWidget, QLabel, QPushButton, QTextEdit, QFrame,
@@ -355,6 +355,9 @@ class SystemDiagnosticsApp(QMainWindow):
         self.setWindowTitle("Диагностика возможности удаленной работы")
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setStyleSheet("background-color: #f0eded;")
+
+        app_path = os.path.join(os.path.dirname(__file__), 'assets/app-logo.png')
+        self.setWindowIcon(QIcon(app_path))
 
         self._create_menu_bar()
 
