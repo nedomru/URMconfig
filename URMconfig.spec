@@ -11,23 +11,18 @@ a = Analysis(
         ('assets', 'assets') # Assets folder
     ],
     hiddenimports=[
-        'tkinter',
         'psutil',
-        'speedtest-cli',
-        'pythoncom',
         'wmi',
         'cv2',
         'pyaudio',
-        'numpy',
-        'urllib3',
         'requests',
-        'ftplib',  # Added for FTP functionality
+        'ftplib',
         'utils.cpu',
         'utils.gpu',
         'utils.internet',
         'utils.peripherals',
         'utils.system',
-        'utils.ftp_upload'  # Added new FTP module
+        'utils.ftp'
     ],
     hookspath=[],
     hooksconfig={},
@@ -52,8 +47,6 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    upx_exclude=[],
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
