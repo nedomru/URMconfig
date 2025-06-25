@@ -148,10 +148,16 @@ class Updater:
                        f"Новая версия: {version}\n\n"
                        f"Скачать новую версию?")
 
-            reply = QMessageBox.question(self.parent, "Обновление доступно", message,
-                                         QMessageBox.Yes | QMessageBox.No)
+            msg_box = QMessageBox(self.parent)
+            msg_box.setWindowTitle("Обновление доступно")
+            msg_box.setText(message)
 
-            if reply == QMessageBox.Yes:
+            yes_button = msg_box.addButton("Да", QMessageBox.YesRole)
+            no_button = msg_box.addButton("Нет", QMessageBox.NoRole)
+
+            reply = msg_box.exec_()
+
+            if msg_box.clickedButton() == yes_button:
                 webbrowser.open(download_url)
         else:
             # Fallback to releases page if direct download not found
