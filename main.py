@@ -13,7 +13,7 @@ if a computer meets the requirements for remote work, including:
 import os
 import platform
 import webbrowser
-from typing import List, Optional
+from typing import List
 
 import psutil
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
@@ -40,6 +40,7 @@ import utils.internet
 import utils.peripherals
 import utils.system
 import utils.ftp
+import utils.updater
 
 # Application constants
 LICENSE_URL = "https://sos.dom.ru/services/license_URM.pdf"
@@ -342,15 +343,20 @@ class SystemDiagnosticsApp(QMainWindow):
         self.animation_timer.timeout.connect(self._update_animation)
         self.animation_dots = 0
         self.base_status_text = ""
+        self.updater = None
 
         self._init_ui()
         self._show_initial_message()
+
+        self._check_for_updates_on_startup()
 
     def _init_ui(self):
         """Initialize the user interface."""
         self.setWindowTitle("Диагностика возможности удаленной работы")
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
         self.setStyleSheet("background-color: #f0eded;")
+
+        self._create_menu_bar()
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -364,6 +370,59 @@ class SystemDiagnosticsApp(QMainWindow):
         self._create_ftp_option(main_layout)
         self._create_button_panel(main_layout)
         self._create_bottom_panel(main_layout)
+
+    def _check_for_updates_on_startup(self):
+        """Check for updates silently on application startup."""
+        # Delay the check by 2 seconds to let the UI load first
+        QTimer.singleShot(2000, self._do_silent_update_check)
+
+    def _do_silent_update_check(self):
+        """Perform the actual silent update check."""
+        if not self.updater:
+            self.updater = utils.updater.Updater(self)
+        self.updater.check_for_updates(silent=True)
+
+    def _create_menu_bar(self):
+        """Create menu bar with Help menu for manual update check."""
+        menubar = self.menuBar()
+
+        # Help menu
+        help_menu = menubar.addMenu('Справка')
+
+        # Check for updates action
+        update_action = help_menu.addAction('Проверить обновления')
+        update_action.triggered.connect(self._check_for_updates_manual)
+
+        # About action
+        about_action = help_menu.addAction('О программе')
+        about_action.triggered.connect(self._show_about)
+
+    def _check_for_updates_manual(self):
+        """Manually check for updates (shows all messages)."""
+        if not self.updater:
+            self.updater = utils.updater.Updater(self)
+        self.updater.check_for_updates(silent=False)
+
+    def _show_about(self):
+        """Show about dialog."""
+        current_version = utils.updater.get_current_version()
+        QMessageBox.about(self, "О программе",
+                          f"URMconfig v{current_version}\n\n"
+                          f"Диагностика возможности удаленной работы\n\n"
+                          f"© 2025 Все права защищены")
+
+    def closeEvent(self, event):
+        """Handle application close event to clean up threads."""
+        # Clean up updater threads
+        if self.updater:
+            self.updater.cleanup()
+
+        # Clean up diagnostics thread if running
+        if hasattr(self, 'diagnostics_thread') and self.diagnostics_thread and self.diagnostics_thread.isRunning():
+            self.diagnostics_thread.terminate()
+            self.diagnostics_thread.wait()
+
+        event.accept()
 
     def _create_header(self, parent_layout: QVBoxLayout):
         """Create the application header with logo and title."""

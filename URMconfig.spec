@@ -22,7 +22,8 @@ a = Analysis(
         'utils.internet',
         'utils.peripherals',
         'utils.system',
-        'utils.ftp'
+        'utils.ftp',
+        'utils.updater'
     ],
     hookspath=[],
     hooksconfig={},
