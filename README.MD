@@ -45,9 +45,7 @@ URMconfig is a professional desktop application designed to comprehensively asse
 - OpenCV (cv2)
 - PyAudio
 - psutil
-- speedtest-cli
 - WMI (Windows)
-- NumPy
 
 ## 🚀 Quick Start
 
@@ -76,7 +74,7 @@ Ensure you have Python 3.7 or higher installed on your system.
 
 ### Install Dependencies
 ```bash
-pip install PyQt5 psutil speedtest-cli opencv-python pyaudio numpy wmi
+pip install PyQt5 psutil opencv-python-headless pyaudio wmi
 ```
 
 ### Building Executable
