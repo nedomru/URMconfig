@@ -1,10 +1,9 @@
 import os
 import platform
+import shutil
 import subprocess
-import sys
 
 import psutil
-import speedtest
 
 
 def check_ethernet_connection():
@@ -47,18 +46,17 @@ def check_ethernet_connection():
 
             # Parse the netsh output more carefully
             # The output format is typically:
-            # Admin State    State          Type             Interface Name
-            # -----------    -----------    -------          --------------------
-            # Enabled        Connected      Dedicated        Ethernet
-            # Enabled        Disconnected   Dedicated        Ethernet 8
+            # Состояние адм.  Состояние     Тип              Имя интерфейса
+            # Разрешен       Подключен      Выделенный       Беспроводная сеть 2
+            # Разрешен       Отключен       Выделенный       Ethernet 8
 
             for line in lines:
                 line = line.strip()
-                if not line or line.startswith('-') or 'Admin State' in line or 'Состояние адм.' in line:
+                if not line or line.startswith('-') or 'Состояние адм' in line or 'Admin State' in line:
                     continue
 
-                # Split the line into columns (they're space-separated)
-                parts = line.split()
+                # Split the line into columns (they're space-separated, but need to handle multiple spaces)
+                parts = [part for part in line.split() if part]
                 if len(parts) >= 4:
                     admin_state = parts[0]
                     connection_state = parts[1]
@@ -69,13 +67,14 @@ def check_ethernet_connection():
                     print(
                         f"Debug: Found interface - Admin: {admin_state}, State: {connection_state}, Type: {interface_type}, Name: {interface_name}")
 
-                    # Check if this is an enabled Ethernet interface
+                    # Check if this is an administratively enabled Ethernet interface
                     admin_enabled = admin_state.lower() in ['enabled', 'разрешен']
                     is_ethernet = ('ethernet' in interface_name.lower() or
-                                   'local area connection' in interface_name.lower() or
-                                   interface_type.lower() == 'dedicated')
+                                   'local area connection' in interface_name.lower())
+                    # Don't rely on interface_type for Ethernet detection as wireless also shows "Выделенный"
+                    is_not_wireless = 'беспроводная' not in interface_name.lower() and 'wireless' not in interface_name.lower()
 
-                    if admin_enabled and is_ethernet:
+                    if admin_enabled and is_ethernet and is_not_wireless:
                         print(f"Found enabled Ethernet interface: {interface_name}")
                         return True
 
@@ -238,22 +237,405 @@ def get_adapter_hardware_name(interface_name):
     return interface_name
 
 
-def run_speed_test_safe():
+def run_speed_test_safe(primary_server="iperf.perm.ertelecom.ru", fallback_server="iperf.ekat.ertelecom.ru",
+                        duration=20):
+    """
+    Download iperf3, run speed test with server fallback, and cleanup - using AppData directory
+    Test parameters: TCP window 2MB, 5 parallel streams, 20 seconds duration
+
+    Args:
+        primary_server: Primary iperf server to test
+        fallback_server: Fallback iperf server if primary fails
+        duration: Test duration in seconds
+
+    Returns:
+        tuple: (download_speed_mbps, upload_speed_mbps, ping_ms, error_message, successful_server)
+    """
+    import os
+    import platform
+    import requests
+    import zipfile
+    import shutil
+    import subprocess
+    import json
+
+    iperf3_url = "https://files.budman.pw/iperf3.19_64.zip"
+
+    appdata_dir = os.path.expandvars('%APPDATA%')
+
+    # Create URMConfig directory in AppData
+    urmconfig_dir = os.path.join(appdata_dir, 'URMConfig')
+    os.makedirs(urmconfig_dir, exist_ok=True)
+
+    zip_path = os.path.join(urmconfig_dir, "iperf3.19_64.zip")
+    iperf_dir = os.path.join(urmconfig_dir, "iperf")
+    iperf3_exe = os.path.join(iperf_dir, "iperf3.exe" if platform.system() == "Windows" else "iperf3")
+
+    print(f"Using AppData directory: {urmconfig_dir}")
+    print(f"iperf3 executable path: {iperf3_exe}")
+
+    def test_server_connectivity(server):
+        """Test if iperf server is responsive"""
+        print(f"Testing connectivity to {server}...")
+        test_cmd = [
+            iperf3_exe,
+            "-c", server,
+            "-t", "1",  # Very short 1-second test
+            "-J"
+        ]
+
+        try:
+            process = subprocess.Popen(
+                test_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE,
+                text=True,
+                cwd=iperf_dir,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            )
+
+            process.stdin.close()
+            stdout, stderr = process.communicate(timeout=10)
+
+            if process.returncode == 0 and stdout.strip():
+                print(f"✓ Server {server} is responsive")
+                return True
+            else:
+                print(f"✗ Server {server} failed: {stderr}")
+                return False
+
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            print(f"✗ Server {server} timed out")
+            return False
+        except Exception as e:
+            print(f"✗ Server {server} error: {e}")
+            return False
+
+    def run_test_on_server(server):
+        """Run speed test on specified server"""
+        print(f"\n=== Running speed test on {server} ===")
+
+        # Run download test with specified parameters:
+        # -w 2M: TCP window size 2MB
+        # -P 5: 5 parallel streams
+        # -t duration: test duration
+        download_cmd = [
+            iperf3_exe,
+            "-c", server,
+            "-t", str(duration),
+            "-w", "2M",  # TCP window size 2MB
+            "-P", "5",  # 5 parallel streams
+            "-J"  # JSON output
+        ]
+        print(f"Running download test: {' '.join(download_cmd)}")
+        print(f"Test parameters: TCP window 2MB, 5 parallel streams, {duration} seconds")
+
+        try:
+            process = subprocess.Popen(
+                download_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE,
+                text=True,
+                cwd=iperf_dir,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            )
+
+            # Close stdin immediately to prevent hanging
+            process.stdin.close()
+
+            # Wait for completion with timeout (add extra buffer for 5 parallel streams)
+            stdout, stderr = process.communicate(timeout=duration + 60)
+
+            if process.returncode != 0:
+                error_msg = stderr.strip() if stderr else "Неизвестная ошибка"
+                print(f"Download test failed: {error_msg}")
+                return None, None, f"Ошибка при тестировании загрузки на {server}: {error_msg}"
+
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            return None, None, f"Таймаут при тестировании загрузки на {server}"
+
+        # Parse download results
+        download_speed_mbps = 0
+        try:
+            if not stdout.strip():
+                return None, None, f"Пустой ответ от iperf3 при тестировании загрузки на {server}"
+
+            download_json = json.loads(stdout)
+            if "end" in download_json and "sum_received" in download_json["end"]:
+                download_speed_mbps = download_json["end"]["sum_received"]["bits_per_second"] / 1_000_000
+            elif "end" in download_json and "sum_sent" in download_json["end"]:
+                download_speed_mbps = download_json["end"]["sum_sent"]["bits_per_second"] / 1_000_000
+            else:
+                return None, None, f"Не удалось найти данные о скорости в ответе iperf3 на {server}"
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            print(f"Error parsing download results: {e}")
+            print(f"Raw output: {stdout}")
+            return None, None, f"Ошибка при разборе результатов загрузки на {server}: {e}"
+
+        print(f"Download speed: {download_speed_mbps:.2f} Mbps")
+
+        # Run upload test (reverse mode) with same parameters
+        upload_cmd = [
+            iperf3_exe,
+            "-c", server,
+            "-t", str(duration),
+            "-w", "2M",  # TCP window size 2MB
+            "-P", "5",  # 5 parallel streams
+            "-R",  # Reverse mode (upload)
+            "-J"  # JSON output
+        ]
+        print(f"Running upload test: {' '.join(upload_cmd)}")
+
+        upload_speed_mbps = 0
+        try:
+            process = subprocess.Popen(
+                upload_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.PIPE,
+                text=True,
+                cwd=iperf_dir,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            )
+
+            # Close stdin immediately
+            process.stdin.close()
+
+            # Wait for completion with timeout (add extra buffer for 5 parallel streams)
+            stdout, stderr = process.communicate(timeout=duration + 60)
+
+            if process.returncode == 0 and stdout.strip():
+                try:
+                    upload_json = json.loads(stdout)
+                    if "end" in upload_json and "sum_received" in upload_json["end"]:
+                        upload_speed_mbps = upload_json["end"]["sum_received"]["bits_per_second"] / 1_000_000
+                    elif "end" in upload_json and "sum_sent" in upload_json["end"]:
+                        upload_speed_mbps = upload_json["end"]["sum_sent"]["bits_per_second"] / 1_000_000
+                    print(f"Upload speed: {upload_speed_mbps:.2f} Mbps")
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    print(f"Error parsing upload results: {e}")
+                    # Upload test failed, but continue with download results
+                    pass
+            else:
+                print(f"Upload test failed: {stderr}")
+
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            print("Upload test timed out")
+            # Continue with upload_speed_mbps = 0
+
+        return download_speed_mbps, upload_speed_mbps, None
+
+    def cleanup_iperf_installation():
+        """Clean up iperf installation"""
+        try:
+            if os.path.exists(iperf_dir):
+                shutil.rmtree(iperf_dir)
+                print("Cleaned up iperf installation")
+        except Exception as e:
+            print(f"Error cleaning up: {e}")
+
     try:
-        if getattr(sys, 'frozen', False):
-            sys.stdin = open(os.devnull, 'r')
-            sys.stdout = open(os.devnull, 'w')
-            sys.stderr = open(os.devnull, 'w')
+        # Check if iperf3 already exists and is working
+        if os.path.exists(iperf3_exe):
+            try:
+                print("Found existing iperf3, testing...")
+                # Test if existing iperf3 works
+                test_cmd = [iperf3_exe, "--version"]
+                result = subprocess.run(test_cmd, capture_output=True, timeout=5)
+                if result.returncode == 0:
+                    print("Existing iperf3 works, skipping download")
+                else:
+                    print("Existing iperf3 doesn't work, removing...")
+                    if os.path.exists(iperf_dir):
+                        shutil.rmtree(iperf_dir)
+                    raise Exception("Existing iperf3 corrupted")
+            except Exception as e:
+                print(f"Error testing existing iperf3: {e}")
+                # Remove and re-download
+                if os.path.exists(iperf_dir):
+                    shutil.rmtree(iperf_dir)
 
-        st = speedtest.Speedtest()
-        st.get_best_server()
+        # Download and extract if needed
+        if not os.path.exists(iperf3_exe):
+            print(f"Downloading iperf3 from {iperf3_url}...")
+            print(f"Saving to {zip_path}...")
 
-        download_speed = st.download() / 1024 / 1024
-        upload_speed = st.upload() / 1024 / 1024
-        ping = st.results.ping
-        result_link = st.results.share()
+            # Download the zip file
+            response = requests.get(iperf3_url, timeout=30)
+            response.raise_for_status()
 
-        return download_speed, upload_speed, ping, result_link, None
+            with open(zip_path, 'wb') as f:
+                f.write(response.content)
 
+            print(f"Downloaded {len(response.content)} bytes")
+
+            # Extract the zip file
+            print(f"Extracting to {urmconfig_dir}...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # List contents first
+                file_list = zip_ref.namelist()
+                print(f"Archive contents: {file_list}")
+                zip_ref.extractall(urmconfig_dir)
+
+            # Find the extracted folder
+            extracted_folder = os.path.join(urmconfig_dir, "iperf3.19_64")
+            print(f"Looking for extracted folder: {extracted_folder}")
+
+            if not os.path.exists(extracted_folder):
+                # Try to find any folder that was extracted
+                for item in os.listdir(urmconfig_dir):
+                    item_path = os.path.join(urmconfig_dir, item)
+                    if os.path.isdir(item_path) and item != 'iperf' and 'iperf' in item.lower():
+                        extracted_folder = item_path
+                        print(f"Found alternative extracted folder: {extracted_folder}")
+                        break
+                else:
+                    return 0, 0, 0, f"Не удалось найти извлеченную папку в {urmconfig_dir}", None
+
+            # Rename extracted folder to iperf
+            if os.path.exists(iperf_dir):
+                shutil.rmtree(iperf_dir)
+
+            os.rename(extracted_folder, iperf_dir)
+            print(f"Renamed {extracted_folder} to {iperf_dir}")
+
+            # Make executable on Unix systems
+            if platform.system() != "Windows":
+                os.chmod(iperf3_exe, 0o755)
+
+            # Clean up zip file
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+                print("Cleaned up zip file")
+
+        # Verify iperf3 executable exists
+        if not os.path.exists(iperf3_exe):
+            return 0, 0, 0, f"iperf3 executable not found at {iperf3_exe}", None
+
+        print(f"iperf3 executable confirmed at: {iperf3_exe}")
+
+        # Test server connectivity and choose which server to use
+        servers_to_try = [primary_server, fallback_server]
+        successful_server = None
+
+        for server in servers_to_try:
+            if test_server_connectivity(server):
+                successful_server = server
+                break
+
+        if not successful_server:
+            cleanup_iperf_installation()
+            return 0, 0, 0, f"Оба сервера недоступны: {primary_server}, {fallback_server}", None
+
+        print(f"Using server: {successful_server}")
+
+        # Run the actual speed test
+        download_speed, upload_speed, error = run_test_on_server(successful_server)
+
+        if error:
+            # If the chosen server fails during the actual test, try the other one
+            print(f"Test failed on {successful_server}, trying fallback...")
+            other_server = fallback_server if successful_server == primary_server else primary_server
+
+            if test_server_connectivity(other_server):
+                print(f"Fallback server {other_server} is available, running test...")
+                download_speed, upload_speed, error = run_test_on_server(other_server)
+                if not error:
+                    successful_server = other_server
+
+            if error:
+                cleanup_iperf_installation()
+                return 0, 0, 0, error, None
+
+        # Get ping to the successful server
+        print(f"Getting ping to {successful_server}...")
+        ping_ms = get_ping_to_server(successful_server)
+        print(f"Ping: {ping_ms} ms")
+
+        cleanup_iperf_installation()
+
+        return download_speed, upload_speed, ping_ms, None, successful_server
+
+    except requests.RequestException as e:
+        cleanup_iperf_installation()
+        return 0, 0, 0, f"Ошибка при загрузке iperf3: {str(e)}", None
     except Exception as e:
-        return 0, 0, 0, str(e)
+        print(f"Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        cleanup_iperf_installation()
+        return 0, 0, 0, f"Ошибка при тестировании скорости: {str(e)}", None
+
+
+def get_ping_to_server(server):
+    """
+    Get ping to the specified server using system ping command.
+
+    Args:
+        server (str): Server hostname or IP address
+
+    Returns:
+        float: Ping time in milliseconds, or 0 if failed
+    """
+    import platform
+    import subprocess
+
+    try:
+        if platform.system() == "Windows":
+            # Windows ping command
+            cmd = ["ping", "-n", "4", server]
+        else:
+            # Linux/Mac ping command
+            cmd = ["ping", "-c", "4", server]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+        if result.returncode == 0:
+            output = result.stdout
+            if platform.system() == "Windows":
+                # Parse Windows ping output
+                import re
+                ping_times = re.findall(r'time[<=](\d+)ms', output)
+                if ping_times:
+                    return sum(int(t) for t in ping_times) / len(ping_times)
+            else:
+                # Parse Linux/Mac ping output
+                import re
+                ping_times = re.findall(r'time=(\d+\.?\d*)', output)
+                if ping_times:
+                    return sum(float(t) for t in ping_times) / len(ping_times)
+
+        return 0
+    except Exception as e:
+        print(f"Error getting ping: {e}")
+        return 0
+
+
+def cleanup_iperf_installation():
+    """
+    Optional function to clean up iperf installation from AppData
+    Call this if you want to force re-download on next run
+    """
+    try:
+        if platform.system() == "Windows":
+            appdata_dir = os.path.expandvars('%APPDATA%')
+        else:
+            appdata_dir = os.path.expanduser('~/.local/share')
+
+        urmconfig_dir = os.path.join(appdata_dir, 'URMConfig')
+        iperf_dir = os.path.join(urmconfig_dir, "iperf")
+
+        if os.path.exists(iperf_dir):
+            shutil.rmtree(iperf_dir)
+            return True
+    except Exception:
+        pass
+    return False
