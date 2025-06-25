@@ -30,7 +30,6 @@ try:
     import wmi
     import cv2
     import pyaudio
-    import numpy
 except ImportError as e:
     print(f"Missing required module: {e.name}")
 
@@ -132,7 +131,7 @@ class DiagnosticsThread(QThread):
         """Test internet connection speed."""
         self.status_update.emit("[1/4] Измеряю скорость интернета")
 
-        download_speed, upload_speed, ping, result_link, error = utils.internet.run_speed_test_safe()
+        download_speed, upload_speed, ping, error, server = utils.internet.run_speed_test_safe()
 
         if error:
             self._log_error(f"Ошибка тестирования скорости: {error}\nЗамерьте скорость вручную на speedtest.net")
@@ -149,7 +148,7 @@ class DiagnosticsThread(QThread):
             self._log_info(f"Загрузка: {download_speed:.0f} Мбит/с")
             self._log_info(f"Отдача: {upload_speed:.0f} Мбит/с")
             self._log_info(f"Пинг: {ping:.0f} мс")
-            self._log_info(f"Результат на сайте: {result_link}")
+            self._log_info(f"Сервер: {'Пермь' if "perm" in server else 'Екатеринбург'}")
 
     def _test_cpu(self):
         """Test CPU specifications."""
@@ -652,40 +651,8 @@ class SystemDiagnosticsApp(QMainWindow):
             QMessageBox.warning(self, "Предупреждение", "Диагностика еще не завершена")
 
 
-def validate_dependencies() -> Optional[str]:
-    """Validate that required modules are available."""
-    required_modules = {
-        'psutil': 'psutil',
-        'speedtest': 'speedtest-cli',
-        'cv2': 'opencv-python',
-        'pyaudio': 'pyaudio',
-        'numpy': 'numpy'
-    }
-
-    missing_modules = []
-    for module, package in required_modules.items():
-        try:
-            __import__(module)
-        except ImportError:
-            missing_modules.append(package)
-
-    if missing_modules:
-        return f"""Отсутствуют необходимые модули: {', '.join(missing_modules)}
-
-Установите зависимости:
-pip install {' '.join(missing_modules)}"""
-
-    return None
-
-
 def main():
     """Main application entry point."""
-    # Validate dependencies
-    dependency_error = validate_dependencies()
-    if dependency_error:
-        app = QApplication([])
-        QMessageBox.critical(None, "Ошибка", dependency_error)
-        return
 
     # Launch application
     app = QApplication([])
