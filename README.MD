@@ -4,7 +4,6 @@
 
 ![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)
 ![PyQt5](https://img.shields.io/badge/PyQt5-GUI-green.svg)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
 ![License](https://img.shields.io/badge/License-Custom-red.svg)
 
 **Comprehensive system diagnostics tool for remote work capability assessment**
@@ -146,7 +145,6 @@ urmconfig/
 ### Architecture
 - **GUI Framework**: PyQt5 with custom styled components
 - **Threading**: Background diagnostics to maintain UI responsiveness
-- **Cross-platform**: Supports Windows, Linux, and macOS
 - **Modular Design**: Separated utility modules for different system aspects
 
 ### Key Components
@@ -167,7 +165,6 @@ urmconfig/
 The application includes comprehensive Citrix Workspace App compatibility checking based on:
 - Windows 10/11 build numbers
 - Specific version requirements for each OS build
-- Linux distribution compatibility
 - Version recommendation engine
 
 ## 🛠️ Development
