@@ -52,6 +52,7 @@ IPERF_SERVERS = [
     {"name": "Ярославль", "code": "76", "host": "iperf.yar.ertelecom.ru", "city": "yar"},
 ]
 
+
 def get_subprocess_creation_flags():
     """Get appropriate subprocess creation flags to hide windows on Windows."""
     if platform.system() == "Windows" and getattr(sys, 'frozen', False):
@@ -74,7 +75,8 @@ def ping_server(server: dict, timeout: int = 5) -> Tuple[dict, float]:
         cmd = ["ping", "-n", "3", "-w", str(timeout * 1000), server["host"]]
 
         result = subprocess.run(cmd, capture_output=True, text=True,
-                                encoding='cp866', errors='replace', timeout=timeout + 2, creationflags=get_subprocess_creation_flags())
+                                encoding='cp866', errors='replace', timeout=timeout + 2,
+                                creationflags=get_subprocess_creation_flags())
 
         if result.returncode == 0:
             output = result.stdout
@@ -155,70 +157,7 @@ def find_best_servers(max_workers: int = 10, max_servers: int = 5) -> List[Tuple
         return []
 
 
-def check_ethernet_connection():
-    """
-    Check for wired ethernet connection status.
-    Returns True if an enabled/resolved Ethernet adapter is found.
-    """
-    try:
-        if platform.system() == "Windows":
-            try:
-                # Get network interface information
-                result = subprocess.run(['netsh', 'interface', 'show', 'interface'],
-                                        capture_output=True,
-                                        check=True,
-                                        encoding='cp866',
-                                        errors='replace', creationflags=get_subprocess_creation_flags())
-                output = result.stdout
-            except UnicodeDecodeError:
-                print("Warning: cp866 decoding failed, trying default text encoding.")
-                result = subprocess.run(['netsh', 'interface', 'show', 'interface'],
-                                        capture_output=True,
-                                        text=True,
-                                        check=True,
-                                        errors='replace', creationflags=get_subprocess_creation_flags())
-                output = result.stdout
-            except subprocess.CalledProcessError as e:
-                print(f"Error running netsh command: {e}")
-                return False
-            except FileNotFoundError:
-                print("Error: 'netsh' command not found.")
-                return False
-
-            lines = output.split('\n')
-
-            for line in lines:
-                line = line.strip()
-                if not line or line.startswith('-') or 'Состояние адм' in line or 'Admin State' in line:
-                    continue
-
-                parts = [part for part in line.split() if part]
-                if len(parts) >= 4:
-                    admin_state = parts[0]
-                    connection_state = parts[1]
-                    interface_type = parts[2]
-                    interface_name = ' '.join(parts[3:])
-
-                    admin_enabled = admin_state.lower() in ['enabled', 'разрешен']
-                    is_ethernet = ('ethernet' in interface_name.lower() or
-                                   'local area connection' in interface_name.lower())
-                    is_not_wireless = 'беспроводная' not in interface_name.lower() and 'wireless' not in interface_name.lower()
-
-                    if admin_enabled and is_ethernet and is_not_wireless:
-                        print(f"Found enabled Ethernet interface: {interface_name}")
-                        return True
-
-            return False
-        else:
-            print(f"Warning: Unsupported operating system: {platform.system()}")
-            return False
-
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return False
-
-
-def get_ethernet_adapter_info():
+def get_adapter_info():
     """Get detailed information about active ethernet adapters"""
     net_stats = psutil.net_if_stats()
     ethernet_adapters = []
@@ -244,7 +183,8 @@ def get_adapter_hardware_name(interface_name):
     """Get the actual hardware name of the network adapter"""
     try:
         cmd = f'wmic path win32_networkadapter where "NetConnectionID=\'{interface_name}\'" get Name /value'
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding='cp866', creationflags=get_subprocess_creation_flags())
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding='cp866',
+                                creationflags=get_subprocess_creation_flags())
 
         for line in result.stdout.split('\n'):
             if line.startswith('Name='):
@@ -450,7 +390,8 @@ def run_speed_test_safe(duration: int = 20) -> Tuple[float, float, float, Option
             try:
                 print("Найден существующий iperf3, проверка...")
                 test_cmd = [iperf3_exe, "--version"]
-                result = subprocess.run(test_cmd, capture_output=True, timeout=5, creationflags=get_subprocess_creation_flags())
+                result = subprocess.run(test_cmd, capture_output=True, timeout=5,
+                                        creationflags=get_subprocess_creation_flags())
                 if result.returncode == 0:
                     print("Существующий iperf3 работает, пропуск загрузки")
                 else:

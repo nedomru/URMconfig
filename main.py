@@ -26,7 +26,6 @@ from PyQt5.QtWidgets import (
 
 # Import validation with user-friendly error handling
 try:
-    import speedtest
     import wmi
     import cv2
     import pyaudio
@@ -171,11 +170,15 @@ class DiagnosticsThread(QThread):
         """Test network adapter availability."""
         self.status_update.emit("[2/4] Проверяю оборудование (сетевой адаптер)")
 
-        ethernet_available = utils.internet.check_ethernet_connection()
+        adapters = utils.internet.get_adapter_info()
 
-        if ethernet_available:
+        # Check if any adapter has "ethernet" in its name or interface
+        has_ethernet = any("ethernet" in adapter['interface'].lower() or
+                          "ethernet" in adapter['adapter_name'].lower()
+                          for adapter in adapters)
+
+        if has_ethernet or adapters:
             self._log_success("Подключение по кабелю")
-            adapters = utils.internet.get_ethernet_adapter_info()
             for adapter in adapters:
                 self._log_info(f"Сетевая карта: {adapter['adapter_name']}")
                 self._log_info(f"Дуплекс: {adapter['speed']} Мбит/с")
