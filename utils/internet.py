@@ -3,6 +3,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 from typing import List, Tuple, Optional
 
 import psutil
@@ -51,6 +52,12 @@ IPERF_SERVERS = [
     {"name": "Ярославль", "code": "76", "host": "iperf.yar.ertelecom.ru", "city": "yar"},
 ]
 
+def get_subprocess_creation_flags():
+    """Get appropriate subprocess creation flags to hide windows on Windows."""
+    if platform.system() == "Windows" and getattr(sys, 'frozen', False):
+        return subprocess.CREATE_NO_WINDOW
+    return 0
+
 
 def ping_server(server: dict, timeout: int = 5) -> Tuple[dict, float]:
     """
@@ -67,7 +74,7 @@ def ping_server(server: dict, timeout: int = 5) -> Tuple[dict, float]:
         cmd = ["ping", "-n", "3", "-w", str(timeout * 1000), server["host"]]
 
         result = subprocess.run(cmd, capture_output=True, text=True,
-                                encoding='cp866', errors='replace', timeout=timeout + 2)
+                                encoding='cp866', errors='replace', timeout=timeout + 2, creationflags=get_subprocess_creation_flags())
 
         if result.returncode == 0:
             output = result.stdout
@@ -161,7 +168,7 @@ def check_ethernet_connection():
                                         capture_output=True,
                                         check=True,
                                         encoding='cp866',
-                                        errors='replace')
+                                        errors='replace', creationflags=get_subprocess_creation_flags())
                 output = result.stdout
             except UnicodeDecodeError:
                 print("Warning: cp866 decoding failed, trying default text encoding.")
@@ -169,7 +176,7 @@ def check_ethernet_connection():
                                         capture_output=True,
                                         text=True,
                                         check=True,
-                                        errors='replace')
+                                        errors='replace', creationflags=get_subprocess_creation_flags())
                 output = result.stdout
             except subprocess.CalledProcessError as e:
                 print(f"Error running netsh command: {e}")
@@ -237,7 +244,7 @@ def get_adapter_hardware_name(interface_name):
     """Get the actual hardware name of the network adapter"""
     try:
         cmd = f'wmic path win32_networkadapter where "NetConnectionID=\'{interface_name}\'" get Name /value'
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding='cp866')
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding='cp866', creationflags=get_subprocess_creation_flags())
 
         for line in result.stdout.split('\n'):
             if line.startswith('Name='):
@@ -443,7 +450,7 @@ def run_speed_test_safe(duration: int = 20) -> Tuple[float, float, float, Option
             try:
                 print("Найден существующий iperf3, проверка...")
                 test_cmd = [iperf3_exe, "--version"]
-                result = subprocess.run(test_cmd, capture_output=True, timeout=5)
+                result = subprocess.run(test_cmd, capture_output=True, timeout=5, creationflags=get_subprocess_creation_flags())
                 if result.returncode == 0:
                     print("Существующий iperf3 работает, пропуск загрузки")
                 else:

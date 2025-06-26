@@ -2,12 +2,14 @@ import platform
 import re
 import subprocess
 
+from utils.internet import get_subprocess_creation_flags
+
 
 def get_gpu_name():
     """Get GPU name using WMI query (Windows)"""
     try:
         cmd = 'wmic path win32_VideoController get Name /value'
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding='cp866')
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, encoding='cp866', creationflags=get_subprocess_creation_flags())
 
         gpu_names = []
         for line in result.stdout.split('\n'):
@@ -34,7 +36,7 @@ def get_gpu_driver():
             result = subprocess.run([
                 'wmic', 'path', 'win32_VideoController',
                 'get', 'name,DriverVersion', '/format:csv'
-            ], capture_output=True, text=True, check=True)
+            ], capture_output=True, text=True, check=True, creationflags=get_subprocess_creation_flags())
 
             lines = result.stdout.strip().split('\n')
 
@@ -52,7 +54,7 @@ def get_gpu_driver():
         try:
             # Check NVIDIA driver
             result = subprocess.run(['nvidia-smi', '--query-gpu=driver_version', '--format=csv,noheader,nounits'],
-                                    capture_output=True, text=True)
+                                    capture_output=True, text=True, creationflags=get_subprocess_creation_flags())
             if result.returncode == 0:
                 driver_version = result.stdout.strip()
         except FileNotFoundError:
@@ -60,7 +62,7 @@ def get_gpu_driver():
 
         try:
             # Check AMD driver via modinfo
-            result = subprocess.run(['modinfo', 'amdgpu'], capture_output=True, text=True)
+            result = subprocess.run(['modinfo', 'amdgpu'], capture_output=True, text=True, creationflags=get_subprocess_creation_flags())
             if result.returncode == 0:
                 version_match = re.search(r'version:\s*(.+)', result.stdout)
                 if version_match:
@@ -70,7 +72,7 @@ def get_gpu_driver():
 
         try:
             # Check Intel driver
-            result = subprocess.run(['modinfo', 'i915'], capture_output=True, text=True)
+            result = subprocess.run(['modinfo', 'i915'], capture_output=True, text=True, creationflags=get_subprocess_creation_flags())
             if result.returncode == 0:
                 version_match = re.search(r'version:\s*(.+)', result.stdout)
                 if version_match:
@@ -81,7 +83,7 @@ def get_gpu_driver():
         # Fallback: check lspci for GPU info
         if not driver_version:
             try:
-                result = subprocess.run(['lspci', '-k'], capture_output=True, text=True)
+                result = subprocess.run(['lspci', '-k'], capture_output=True, text=True, creationflags=get_subprocess_creation_flags())
                 if result.returncode == 0:
                     gpu_lines = [line for line in result.stdout.split('\n')
                                  if 'VGA' in line or 'Display' in line]
