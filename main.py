@@ -149,7 +149,7 @@ class DiagnosticsThread(QThread):
             self._log_info(f"Загрузка: {download_speed:.0f} Мбит/с")
             self._log_info(f"Отдача: {upload_speed:.0f} Мбит/с")
             self._log_info(f"Пинг: {ping:.0f} мс")
-            self._log_info(f"Сервер: {'Пермь' if "perm" in server else 'Екатеринбург'}")
+            self._log_info(f"Сервер: {server if server else 'Неизвестный'}")
 
     def _test_cpu(self):
         """Test CPU specifications."""
