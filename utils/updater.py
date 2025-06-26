@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import QMessageBox
 # Application constants
 GITHUB_API_URL = "https://api.github.com/repos/nedomru/URMconfig/releases/latest"
 GITHUB_RELEASES_URL = "https://github.com/nedomru/URMconfig/releases"
-CURRENT_VERSION = "1.2"  # Update this with each release
+CURRENT_VERSION = "1.3"  # Update this with each release
 TIMEOUT = 30  # seconds
 
 
